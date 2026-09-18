@@ -1,0 +1,42 @@
+# Go
+*.exe
+*.test
+*.out
+*.prof
+
+# Go build output
+/bin/
+/dist/
+
+# Native build output
+/build/
+*.dll
+*.lib
+*.exp
+*.obj
+*.pdb
+*.ilk
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# C/C++ generated files
+*.i
+*.tmp
+*.log
+
+# IDEs
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go workspace
+go.work
+go.work.sum

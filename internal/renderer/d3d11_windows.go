@@ -47,9 +47,9 @@ func Initialize() (*Device, error) {
 	)
 
 	hr, _, _ := d3d11CreateDevice.Call(
-		0, // pAdapter - default adapter
+		0,
 		driverTypeHardware,
-		0, // Software
+		0,
 		createDeviceBGRA,
 		uintptr(unsafe.Pointer(&featureLevels[0])),
 		uintptr(len(featureLevels)),
@@ -67,11 +67,15 @@ func Initialize() (*Device, error) {
 	}
 
 	if device == 0 {
-		return nil, fmt.Errorf("D3D11CreateDevice returned a nil device")
+		return nil, fmt.Errorf(
+			"D3D11CreateDevice returned a nil device",
+		)
 	}
 
 	if context == 0 {
-		return nil, fmt.Errorf("D3D11CreateDevice returned a nil context")
+		return nil, fmt.Errorf(
+			"D3D11CreateDevice returned a nil context",
+		)
 	}
 
 	return &Device{
@@ -82,9 +86,6 @@ func Initialize() (*Device, error) {
 }
 
 // DevicePointer returns the native ID3D11Device pointer.
-//
-// This is primarily useful internally when interacting with
-// other Direct3D/DXGI COM interfaces.
 func (d *Device) DevicePointer() uintptr {
 	if d == nil {
 		return 0
@@ -102,7 +103,7 @@ func (d *Device) ContextPointer() uintptr {
 	return d.context
 }
 
-// FeatureLevel returns the Direct3D feature level selected by the driver.
+// FeatureLevel returns the selected Direct3D feature level.
 func (d *Device) FeatureLevel() uint32 {
 	if d == nil {
 		return 0

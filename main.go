@@ -3,39 +3,55 @@ package main
 import (
 	"log"
 
-	"github.com/khorihutama/viewfinder-go/internal/renderer"
+	"github.com/khorihutama/viewfinder-go/internal/native"
 	"github.com/khorihutama/viewfinder-go/internal/win32"
+)
+
+const (
+	windowWidth  = 1280
+	windowHeight = 720
 )
 
 func main() {
 	window, err := win32.Create(
 		"Viewfinder-Go",
-		1280,
-		720,
+		windowWidth,
+		windowHeight,
 	)
 	if err != nil {
-		log.Fatalf("create window: %v", err)
+		log.Fatalf(
+			"create window: %v",
+			err,
+		)
 	}
 
 	log.Println("Win32 window created")
 
-	device, err := renderer.Initialize()
+	log.Println(
+		"Creating D3D11 device and DXGI swap chain...",
+	)
+
+	swapChain, err := native.CreateSwapChain(
+		window.HWND,
+		windowWidth,
+		windowHeight,
+	)
 	if err != nil {
-		log.Fatalf("initialize D3D11: %v", err)
+		log.Fatalf(
+			"create swap chain: %v",
+			err,
+		)
 	}
 
 	log.Printf(
-		"D3D11 device initialized: pointer=0x%X feature_level=0x%X",
-		device.DevicePointer(),
-		device.FeatureLevel(),
-	)
-
-	log.Printf(
-		"D3D11 context initialized: pointer=0x%X",
-		device.ContextPointer(),
+		"DXGI swap chain initialized: 0x%X",
+		swapChain,
 	)
 
 	if err := window.Run(); err != nil {
-		log.Fatalf("message loop: %v", err)
+		log.Fatalf(
+			"message loop: %v",
+			err,
+		)
 	}
 }
