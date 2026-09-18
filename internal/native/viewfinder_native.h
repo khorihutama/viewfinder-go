@@ -13,15 +13,29 @@
 extern "C" {
 #endif
 
-VIEWFINDER_API int32_t ViewfinderCreateSwapChain(
+typedef struct ViewfinderRenderer ViewfinderRenderer;
+
+VIEWFINDER_API int32_t ViewfinderCreateRenderer(
     HWND hwnd,
     uint32_t width,
     uint32_t height,
-    void** outSwapChain
+    ViewfinderRenderer** outRenderer
 );
 
-VIEWFINDER_API void ViewfinderReleaseObject(
-    void* object
+VIEWFINDER_API int32_t ViewfinderClear(
+    ViewfinderRenderer* renderer,
+    float r,
+    float g,
+    float b,
+    float a
+);
+
+VIEWFINDER_API int32_t ViewfinderPresent(
+    ViewfinderRenderer* renderer
+);
+
+VIEWFINDER_API void ViewfinderDestroyRenderer(
+    ViewfinderRenderer* renderer
 );
 
 #ifdef __cplusplus
