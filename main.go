@@ -17,7 +17,6 @@ const (
 )
 
 func main() {
-	// D3D11 and Win32 operations are kept on one OS thread.
 	runtime.LockOSThread()
 
 	window, err := win32.Create(
@@ -50,16 +49,32 @@ func main() {
 
 	log.Println("D3D11 renderer initialized")
 
-	frameDuration := time.Second / targetFPS
+	capture, err := native.CreateCapture()
+	if err != nil {
+		log.Fatalf(
+			"create capture: %v",
+			err,
+		)
+	}
 
+	defer capture.Close()
+
+	log.Println("Media Foundation capture object created")
+
+	if err := capture.Initialize(); err != nil {
+		log.Fatalf(
+			"initialize Media Foundation: %v",
+			err,
+		)
+	}
+
+	log.Println("Media Foundation initialized")
+
+	frameDuration := time.Second / targetFPS
 	nextFrame := time.Now()
 
-	var frame uint64
-
 	for {
-		// Process all pending Windows messages.
 		running, err := window.Pump()
-
 		if err != nil {
 			log.Fatalf(
 				"message pump: %v",
@@ -75,17 +90,13 @@ func main() {
 		now := time.Now()
 
 		if now.Before(nextFrame) {
-			// Give the Go scheduler some time.
 			runtime.Gosched()
 			continue
 		}
 
-		frame++
-
 		if err := renderer.Render(); err != nil {
 			log.Fatalf(
-				"render frame %d: %v",
-				frame,
+				"render: %v",
 				err,
 			)
 		}
@@ -94,9 +105,10 @@ func main() {
 			frameDuration,
 		)
 
-		// Recover if rendering fell significantly behind.
 		if nextFrame.Before(now) {
-			nextFrame = now.Add(frameDuration)
+			nextFrame = now.Add(
+				frameDuration,
+			)
 		}
 	}
 }
