@@ -8,30 +8,6 @@ import (
 	"unsafe"
 )
 
-type Capture struct {
-	ptr uintptr
-}
-
-type CaptureDevice struct {
-	Index uint32
-	Name  string
-}
-
-type CaptureFormat struct {
-	Index uint32
-
-	Width  uint32
-	Height uint32
-
-	FPSNumerator   uint32
-	FPSDenominator uint32
-
-	Subtype string
-}
-
-const maxDeviceName = 256
-const maxSubtypeName = 64
-
 var (
 	procCaptureCreate = dll.NewProc(
 		"ViewfinderCaptureCreate",
@@ -39,6 +15,10 @@ var (
 
 	procCaptureInitialize = dll.NewProc(
 		"ViewfinderCaptureInitialize",
+	)
+
+	procCaptureDestroy = dll.NewProc(
+		"ViewfinderCaptureDestroy",
 	)
 
 	procCaptureGetDeviceCount = dll.NewProc(
@@ -57,10 +37,6 @@ var (
 		"ViewfinderCaptureGetFormat",
 	)
 
-	procCaptureDestroy = dll.NewProc(
-		"ViewfinderCaptureDestroy",
-	)
-
 	procCaptureOpen = dll.NewProc(
 		"ViewfinderCaptureOpen",
 	)
@@ -72,30 +48,63 @@ var (
 	procCaptureClose = dll.NewProc(
 		"ViewfinderCaptureClose",
 	)
+
+	procCaptureReadFrame = dll.NewProc(
+		"ViewfinderCaptureReadFrame",
+	)
 )
+
+type Capture struct {
+	ptr uintptr
+}
+
+type CaptureDevice struct {
+	Index uint32
+	Name  string
+}
+
+type CaptureFormat struct {
+	Index          uint32
+	Width          uint32
+	Height         uint32
+	FPSNumerator   uint32
+	FPSDenominator uint32
+	Subtype        string
+}
 
 type nativeCaptureDevice struct {
 	Index uint32
-	Name  [maxDeviceName]uint16
+	Name  [256]uint16
 }
 
 type nativeCaptureFormat struct {
-	Index uint32
-
-	Width  uint32
-	Height uint32
-
+	Index          uint32
+	Width          uint32
+	Height         uint32
 	FPSNumerator   uint32
 	FPSDenominator uint32
+	Subtype        [64]uint16
+}
 
-	Subtype [maxSubtypeName]uint16
+func checkHRESULT(result uintptr, name string) error {
+	hr := int32(result)
+
+	if hr < 0 {
+		return fmt.Errorf(
+			"%s failed: 0x%08X",
+			name,
+			uint32(result),
+		)
+	}
+
+	return nil
 }
 
 func CreateCapture() (*Capture, error) {
-	var capture uintptr
+	var ptr uintptr
 
 	result, _, _ := procCaptureCreate.Call(
-		uintptr(unsafe.Pointer(&capture)),
+		uintptr(unsafe.Pointer(&ptr)),
 	)
 
 	if err := checkHRESULT(
@@ -105,22 +114,20 @@ func CreateCapture() (*Capture, error) {
 		return nil, err
 	}
 
-	if capture == 0 {
+	if ptr == 0 {
 		return nil, fmt.Errorf(
-			"native capture is nil",
+			"ViewfinderCaptureCreate returned null",
 		)
 	}
 
 	return &Capture{
-		ptr: capture,
+		ptr: ptr,
 	}, nil
 }
 
 func (c *Capture) Initialize() error {
 	if c == nil || c.ptr == 0 {
-		return fmt.Errorf(
-			"capture is nil",
-		)
+		return fmt.Errorf("capture is nil")
 	}
 
 	result, _, _ := procCaptureInitialize.Call(
@@ -133,11 +140,19 @@ func (c *Capture) Initialize() error {
 	)
 }
 
+func (c *Capture) Destroy() {
+	if c == nil || c.ptr == 0 {
+		return
+	}
+
+	procCaptureDestroy.Call(c.ptr)
+
+	c.ptr = 0
+}
+
 func (c *Capture) DeviceCount() (uint32, error) {
 	if c == nil || c.ptr == 0 {
-		return 0, fmt.Errorf(
-			"capture is nil",
-		)
+		return 0, fmt.Errorf("capture is nil")
 	}
 
 	var count uint32
@@ -161,17 +176,15 @@ func (c *Capture) Device(
 	index uint32,
 ) (*CaptureDevice, error) {
 	if c == nil || c.ptr == 0 {
-		return nil, fmt.Errorf(
-			"capture is nil",
-		)
+		return nil, fmt.Errorf("capture is nil")
 	}
 
-	var nativeDevice nativeCaptureDevice
+	var device nativeCaptureDevice
 
 	result, _, _ := procCaptureGetDevice.Call(
 		c.ptr,
 		uintptr(index),
-		uintptr(unsafe.Pointer(&nativeDevice)),
+		uintptr(unsafe.Pointer(&device)),
 	)
 
 	if err := checkHRESULT(
@@ -181,13 +194,9 @@ func (c *Capture) Device(
 		return nil, err
 	}
 
-	name := syscall.UTF16ToString(
-		nativeDevice.Name[:],
-	)
-
 	return &CaptureDevice{
-		Index: nativeDevice.Index,
-		Name:  name,
+		Index: device.Index,
+		Name:  syscall.UTF16ToString(device.Name[:]),
 	}, nil
 }
 
@@ -208,11 +217,7 @@ func (c *Capture) Devices() ([]CaptureDevice, error) {
 		device, err := c.Device(i)
 
 		if err != nil {
-			return nil, fmt.Errorf(
-				"get device %d: %w",
-				i,
-				err,
-			)
+			return nil, err
 		}
 
 		devices = append(
@@ -228,9 +233,7 @@ func (c *Capture) FormatCount(
 	deviceIndex uint32,
 ) (uint32, error) {
 	if c == nil || c.ptr == 0 {
-		return 0, fmt.Errorf(
-			"capture is nil",
-		)
+		return 0, fmt.Errorf("capture is nil")
 	}
 
 	var count uint32
@@ -256,18 +259,16 @@ func (c *Capture) Format(
 	formatIndex uint32,
 ) (*CaptureFormat, error) {
 	if c == nil || c.ptr == 0 {
-		return nil, fmt.Errorf(
-			"capture is nil",
-		)
+		return nil, fmt.Errorf("capture is nil")
 	}
 
-	var nativeFormat nativeCaptureFormat
+	var format nativeCaptureFormat
 
 	result, _, _ := procCaptureGetFormat.Call(
 		c.ptr,
 		uintptr(deviceIndex),
 		uintptr(formatIndex),
-		uintptr(unsafe.Pointer(&nativeFormat)),
+		uintptr(unsafe.Pointer(&format)),
 	)
 
 	if err := checkHRESULT(
@@ -277,29 +278,22 @@ func (c *Capture) Format(
 		return nil, err
 	}
 
-	subtype := syscall.UTF16ToString(
-		nativeFormat.Subtype[:],
-	)
-
 	return &CaptureFormat{
-		Index: nativeFormat.Index,
-
-		Width:  nativeFormat.Width,
-		Height: nativeFormat.Height,
-
-		FPSNumerator:   nativeFormat.FPSNumerator,
-		FPSDenominator: nativeFormat.FPSDenominator,
-
-		Subtype: subtype,
+		Index:          format.Index,
+		Width:          format.Width,
+		Height:         format.Height,
+		FPSNumerator:   format.FPSNumerator,
+		FPSDenominator: format.FPSDenominator,
+		Subtype: syscall.UTF16ToString(
+			format.Subtype[:],
+		),
 	}, nil
 }
 
 func (c *Capture) Formats(
 	deviceIndex uint32,
 ) ([]CaptureFormat, error) {
-	count, err := c.FormatCount(
-		deviceIndex,
-	)
+	count, err := c.FormatCount(deviceIndex)
 
 	if err != nil {
 		return nil, err
@@ -318,11 +312,7 @@ func (c *Capture) Formats(
 		)
 
 		if err != nil {
-			return nil, fmt.Errorf(
-				"get format %d: %w",
-				i,
-				err,
-			)
+			return nil, err
 		}
 
 		formats = append(
@@ -332,35 +322,6 @@ func (c *Capture) Formats(
 	}
 
 	return formats, nil
-}
-
-func (c *Capture) Close() {
-	if c == nil || c.ptr == 0 {
-		return
-	}
-
-	procCaptureDestroy.Call(
-		c.ptr,
-	)
-
-	c.ptr = 0
-}
-
-func checkHRESULT(
-	result uintptr,
-	operation string,
-) error {
-	hr := int32(uint32(result))
-
-	if hr < 0 {
-		return fmt.Errorf(
-			"%s failed: HRESULT 0x%08X",
-			operation,
-			uint32(hr),
-		)
-	}
-
-	return nil
 }
 
 func (c *Capture) Open(
@@ -395,12 +356,59 @@ func (c *Capture) IsOpen() bool {
 	return int32(result) == 1
 }
 
-func (c *Capture) CloseStream() {
+func (c *Capture) Close() {
 	if c == nil || c.ptr == 0 {
 		return
 	}
 
-	procCaptureClose.Call(
+	procCaptureClose.Call(c.ptr)
+}
+
+func (c *Capture) ReadFrame(
+	buffer []byte,
+) (
+	dataSize uint32,
+	width uint32,
+	height uint32,
+	stride uint32,
+	err error,
+) {
+	if c == nil || c.ptr == 0 {
+		return 0, 0, 0, 0,
+			fmt.Errorf("capture is nil")
+	}
+
+	if len(buffer) == 0 {
+		return 0, 0, 0, 0,
+			fmt.Errorf("buffer is empty")
+	}
+
+	var outDataSize uint32
+	var outWidth uint32
+	var outHeight uint32
+	var outStride uint32
+
+	result, _, _ := procCaptureReadFrame.Call(
 		c.ptr,
+		uintptr(unsafe.Pointer(&buffer[0])),
+		uintptr(len(buffer)),
+		uintptr(unsafe.Pointer(&outDataSize)),
+		uintptr(unsafe.Pointer(&outWidth)),
+		uintptr(unsafe.Pointer(&outHeight)),
+		uintptr(unsafe.Pointer(&outStride)),
 	)
+
+	if int32(result) < 0 {
+		return 0, 0, 0, 0,
+			fmt.Errorf(
+				"ViewfinderCaptureReadFrame failed: 0x%08X",
+				uint32(result),
+			)
+	}
+
+	return outDataSize,
+		outWidth,
+		outHeight,
+		outStride,
+		nil
 }

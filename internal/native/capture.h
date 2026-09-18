@@ -97,6 +97,16 @@ VIEWFINDER_API void ViewfinderCaptureClose(
     ViewfinderCapture* capture
 );
 
+VIEWFINDER_API int32_t ViewfinderCaptureReadFrame(
+    ViewfinderCapture* capture,
+    uint8_t* buffer,
+    uint32_t bufferSize,
+    uint32_t* outDataSize,
+    uint32_t* outWidth,
+    uint32_t* outHeight,
+    uint32_t* outStride
+);
+
 
 #ifdef __cplusplus
 }

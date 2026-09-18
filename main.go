@@ -5,187 +5,257 @@ import (
 	"runtime"
 
 	"github.com/khorihutama/viewfinder-go/internal/native"
+	"github.com/khorihutama/viewfinder-go/internal/renderer"
 	"github.com/khorihutama/viewfinder-go/internal/win32"
-)
-
-const (
-	windowWidth  = 1280
-	windowHeight = 720
 )
 
 func main() {
 	runtime.LockOSThread()
 
+	log.Println("Starting Viewfinder Go")
+
+	// ------------------------------------------------------------
+	// Create Win32 window
+	// ------------------------------------------------------------
+
 	window, err := win32.Create(
-		"Viewfinder-Go",
-		windowWidth,
-		windowHeight,
+		"Viewfinder Go",
+		1280,
+		720,
 	)
+
 	if err != nil {
 		log.Fatalf(
-			"create window: %v",
+			"failed to create window: %v",
 			err,
 		)
 	}
 
 	log.Println("Win32 window created")
 
-	renderer, err := native.CreateRenderer(
-		window.HWND,
-		windowWidth,
-		windowHeight,
-	)
+	// ------------------------------------------------------------
+	// Initialize D3D11
+	// ------------------------------------------------------------
+
+	d3d, err := renderer.Initialize()
+
 	if err != nil {
 		log.Fatalf(
-			"create renderer: %v",
+			"failed to initialize D3D11: %v",
 			err,
 		)
 	}
 
-	defer renderer.Close()
+	log.Printf(
+		"D3D11 device initialized: pointer=0x%X feature_level=0x%X",
+		d3d.DevicePointer(),
+		d3d.FeatureLevel(),
+	)
 
-	log.Println("D3D11 renderer initialized")
+	log.Printf(
+		"D3D11 context initialized: pointer=0x%X",
+		d3d.ContextPointer(),
+	)
+
+	// ------------------------------------------------------------
+	// Initialize capture
+	// ------------------------------------------------------------
 
 	capture, err := native.CreateCapture()
+
 	if err != nil {
 		log.Fatalf(
-			"create capture: %v",
+			"failed to create capture: %v",
 			err,
 		)
 	}
 
-	defer capture.Close()
+	defer capture.Destroy()
 
-	log.Println(
-		"Media Foundation capture object created",
-	)
+	log.Println("Capture object created")
 
 	if err := capture.Initialize(); err != nil {
 		log.Fatalf(
-			"initialize capture: %v",
+			"failed to initialize capture: %v",
 			err,
 		)
 	}
 
-	log.Println(
-		"Media Foundation initialized",
-	)
+	log.Println("Capture initialized")
+
+	// ------------------------------------------------------------
+	// Enumerate devices
+	// ------------------------------------------------------------
 
 	devices, err := capture.Devices()
-	if len(devices) == 0 {
-		log.Println("No video capture devices found")
-	} else {
-		device := devices[0]
 
-		log.Printf(
-			"Using device [%d]: %s",
-			device.Index,
-			device.Name,
+	if err != nil {
+		log.Fatalf(
+			"failed to enumerate devices: %v",
+			err,
 		)
-
-		formats, err := capture.Formats(
-			device.Index,
-		)
-
-		if err != nil {
-			log.Fatalf(
-				"enumerate formats: %v",
-				err,
-			)
-		}
-
-		if len(formats) == 0 {
-			log.Fatal("No video formats found")
-		}
-
-		for _, format := range formats {
-			fps := float64(format.FPSNumerator) /
-				float64(format.FPSDenominator)
-
-			log.Printf(
-				"[%d] %dx%d @ %.2f FPS | %s",
-				format.Index,
-				format.Width,
-				format.Height,
-				fps,
-				format.Subtype,
-			)
-		}
-
-		selected := formats[0]
-
-		log.Printf(
-			"Opening format [%d]: %dx%d",
-			selected.Index,
-			selected.Width,
-			selected.Height,
-		)
-
-		if err := capture.Open(
-			device.Index,
-			selected.Index,
-		); err != nil {
-			log.Fatalf(
-				"open capture: %v",
-				err,
-			)
-		}
-
-		log.Println("Capture stream opened")
 	}
 
-	log.Println("")
-	log.Println("Capture devices:")
+	log.Printf(
+		"Found %d capture device(s)",
+		len(devices),
+	)
+
+	if len(devices) == 0 {
+		log.Fatal("no capture devices found")
+	}
 
 	for _, device := range devices {
 		log.Printf(
-			"[%d] %s",
+			"Device [%d]: %s",
 			device.Index,
 			device.Name,
 		)
+	}
 
-		formats, err := capture.Formats(
-			device.Index,
+	// ------------------------------------------------------------
+	// Select first capture device
+	// ------------------------------------------------------------
+
+	deviceIndex := devices[0].Index
+
+	log.Printf(
+		"Using device [%d]: %s",
+		deviceIndex,
+		devices[0].Name,
+	)
+
+	// ------------------------------------------------------------
+	// Enumerate formats
+	// ------------------------------------------------------------
+
+	formats, err := capture.Formats(
+		deviceIndex,
+	)
+
+	if err != nil {
+		log.Fatalf(
+			"failed to enumerate formats: %v",
+			err,
+		)
+	}
+
+	log.Printf(
+		"Found %d format(s)",
+		len(formats),
+	)
+
+	for _, format := range formats {
+		fps := float64(
+			format.FPSNumerator,
+		) / float64(
+			format.FPSDenominator,
+		)
+
+		log.Printf(
+			"[%d] %dx%d @ %.2f FPS | %s",
+			format.Index,
+			format.Width,
+			format.Height,
+			fps,
+			format.Subtype,
+		)
+	}
+
+	if len(formats) == 0 {
+		log.Fatal("no capture formats found")
+	}
+
+	// ------------------------------------------------------------
+	// Select first format
+	// ------------------------------------------------------------
+
+	formatIndex := formats[0].Index
+	selectedFormat := formats[0]
+
+	log.Printf(
+		"Opening format [%d]: %dx%d",
+		formatIndex,
+		selectedFormat.Width,
+		selectedFormat.Height,
+	)
+
+	if err := capture.Open(
+		deviceIndex,
+		formatIndex,
+	); err != nil {
+		log.Fatalf(
+			"failed to open capture stream: %v",
+			err,
+		)
+	}
+
+	log.Println("Capture stream opened")
+
+	if !capture.IsOpen() {
+		log.Fatal("capture stream reports as closed")
+	}
+
+	log.Println("Capture stream is open")
+
+	// ------------------------------------------------------------
+	// Read video frames
+	// ------------------------------------------------------------
+
+	/*
+	 * Allocate a buffer large enough for common
+	 * uncompressed formats.
+
+	 * We will improve this later based on the
+	 * actual media subtype.
+	 */
+
+	bufferSize :=
+		int(selectedFormat.Width) *
+			int(selectedFormat.Height) *
+			4
+
+	buffer := make([]byte, bufferSize)
+
+	for i := 0; i < 10; i++ {
+		dataSize,
+			width,
+			height,
+			stride,
+			err := capture.ReadFrame(
+			buffer,
 		)
 
 		if err != nil {
 			log.Printf(
-				"    failed to enumerate formats: %v",
+				"ReadFrame %d failed: %v",
+				i,
 				err,
 			)
 
 			continue
 		}
 
-		for _, format := range formats {
-			fps := float64(
-				format.FPSNumerator,
-			) / float64(
-				format.FPSDenominator,
-			)
-
-			log.Printf(
-				"    [%d] %dx%d @ %.2f FPS | %s",
-				format.Index,
-				format.Width,
-				format.Height,
-				fps,
-				format.Subtype,
-			)
-		}
-	}
-
-	log.Println("")
-	log.Println(
-		"Press Ctrl+C or close the window to exit.",
-	)
-
-	if err := window.Run(); err != nil {
-		log.Fatalf(
-			"message loop: %v",
-			err,
+		log.Printf(
+			"Frame %d: %dx%d | data=%d bytes | stride=%d",
+			i,
+			width,
+			height,
+			dataSize,
+			stride,
 		)
 	}
 
-	log.Println("Window closed")
+	log.Println("Frame test completed")
+
+	// ------------------------------------------------------------
+	// Keep window alive
+	// ------------------------------------------------------------
+
+	if err := window.Run(); err != nil {
+		log.Fatalf(
+			"window message loop failed: %v",
+			err,
+		)
+	}
 }

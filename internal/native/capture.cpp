@@ -939,6 +939,222 @@ VIEWFINDER_API void ViewfinderCaptureClose(
     capture->opened = false;
 }
 
+VIEWFINDER_API int32_t ViewfinderCaptureReadFrame(
+    ViewfinderCapture* capture,
+    uint8_t* buffer,
+    uint32_t bufferSize,
+    uint32_t* outDataSize,
+    uint32_t* outWidth,
+    uint32_t* outHeight,
+    uint32_t* outStride
+)
+{
+    if (!capture ||
+        !buffer ||
+        !outDataSize ||
+        !outWidth ||
+        !outHeight ||
+        !outStride)
+    {
+        return E_INVALIDARG;
+    }
+
+    if (!capture->opened || !capture->reader)
+    {
+        return MF_E_NOT_INITIALIZED;
+    }
+
+    *outDataSize = 0;
+    *outWidth = 0;
+    *outHeight = 0;
+    *outStride = 0;
+
+    DWORD streamFlags = 0;
+    LONGLONG timestamp = 0;
+
+    IMFSample* sample = nullptr;
+
+    HRESULT hr = capture->reader->ReadSample(
+        MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+        0,
+        nullptr,
+        &streamFlags,
+        &timestamp,
+        &sample
+    );
+
+    if (FAILED(hr))
+    {
+        return static_cast<int32_t>(hr);
+    }
+
+    // The source may temporarily have no sample.
+    if (streamFlags & MF_SOURCE_READERF_ENDOFSTREAM)
+    {
+        if (sample)
+        {
+            sample->Release();
+        }
+
+        return MF_E_END_OF_STREAM;
+    }
+
+    if (streamFlags & MF_SOURCE_READERF_CURRENTMEDIATYPECHANGED)
+    {
+        if (sample)
+        {
+            sample->Release();
+        }
+
+        return S_FALSE;
+    }
+
+    if (!sample)
+    {
+        return S_FALSE;
+    }
+
+    IMFMediaBuffer* mediaBuffer = nullptr;
+
+    hr = sample->ConvertToContiguousBuffer(
+        &mediaBuffer
+    );
+
+    if (FAILED(hr))
+    {
+        sample->Release();
+
+        return static_cast<int32_t>(hr);
+    }
+
+    BYTE* data = nullptr;
+    DWORD maxLength = 0;
+    DWORD currentLength = 0;
+
+    hr = mediaBuffer->Lock(
+        &data,
+        &maxLength,
+        &currentLength
+    );
+
+    if (FAILED(hr))
+    {
+        mediaBuffer->Release();
+        sample->Release();
+
+        return static_cast<int32_t>(hr);
+    }
+
+    if (currentLength > bufferSize)
+    {
+        mediaBuffer->Unlock();
+        mediaBuffer->Release();
+        sample->Release();
+
+        return HRESULT_FROM_WIN32(
+            ERROR_INSUFFICIENT_BUFFER
+        );
+    }
+
+    memcpy(
+        buffer,
+        data,
+        currentLength
+    );
+
+    mediaBuffer->Unlock();
+
+    mediaBuffer->Release();
+    sample->Release();
+
+    /*
+     * Get the current media type so Go knows
+     * the dimensions of the frame.
+     */
+
+    IMFMediaType* mediaType = nullptr;
+
+    hr = capture->reader->GetCurrentMediaType(
+        MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+        &mediaType
+    );
+
+    if (FAILED(hr))
+    {
+        return static_cast<int32_t>(hr);
+    }
+
+    UINT32 width = 0;
+    UINT32 height = 0;
+
+    hr = MFGetAttributeSize(
+        mediaType,
+        MF_MT_FRAME_SIZE,
+        &width,
+        &height
+    );
+
+    if (FAILED(hr))
+    {
+        mediaType->Release();
+
+        return static_cast<int32_t>(hr);
+    }
+
+    /*
+     * Calculate the stride.
+
+     * For the first implementation we assume a
+     * tightly packed buffer.
+     *
+     * We'll handle real media-type stride correctly
+     * in a later step.
+     */
+
+    GUID subtype{};
+
+    hr = mediaType->GetGUID(
+        MF_MT_SUBTYPE,
+        &subtype
+    );
+
+    if (FAILED(hr))
+    {
+        mediaType->Release();
+
+        return static_cast<int32_t>(hr);
+    }
+
+    LONG stride = 0;
+
+    hr = MFGetStrideForBitmapInfoHeader(
+        subtype.Data1,
+        width,
+        &stride
+    );
+
+    if (FAILED(hr))
+    {
+        /*
+         * Some formats don't have a bitmap stride.
+         * Returning 0 tells the caller that the format
+         * isn't currently handled as a bitmap.
+         */
+        stride = 0;
+    }
+
+    mediaType->Release();
+
+    *outDataSize = currentLength;
+    *outWidth = width;
+    *outHeight = height;
+    *outStride = static_cast<uint32_t>(
+        stride > 0 ? stride : 0
+    );
+
+    return S_OK;
+}
+
 VIEWFINDER_API void ViewfinderCaptureDestroy(
     ViewfinderCapture* capture
 )
