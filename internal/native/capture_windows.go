@@ -60,6 +60,18 @@ var (
 	procCaptureDestroy = dll.NewProc(
 		"ViewfinderCaptureDestroy",
 	)
+
+	procCaptureOpen = dll.NewProc(
+		"ViewfinderCaptureOpen",
+	)
+
+	procCaptureIsOpen = dll.NewProc(
+		"ViewfinderCaptureIsOpen",
+	)
+
+	procCaptureClose = dll.NewProc(
+		"ViewfinderCaptureClose",
+	)
 )
 
 type nativeCaptureDevice struct {
@@ -349,4 +361,46 @@ func checkHRESULT(
 	}
 
 	return nil
+}
+
+func (c *Capture) Open(
+	deviceIndex uint32,
+	formatIndex uint32,
+) error {
+	if c == nil || c.ptr == 0 {
+		return fmt.Errorf("capture is nil")
+	}
+
+	result, _, _ := procCaptureOpen.Call(
+		c.ptr,
+		uintptr(deviceIndex),
+		uintptr(formatIndex),
+	)
+
+	return checkHRESULT(
+		result,
+		"ViewfinderCaptureOpen",
+	)
+}
+
+func (c *Capture) IsOpen() bool {
+	if c == nil || c.ptr == 0 {
+		return false
+	}
+
+	result, _, _ := procCaptureIsOpen.Call(
+		c.ptr,
+	)
+
+	return int32(result) == 1
+}
+
+func (c *Capture) CloseStream() {
+	if c == nil || c.ptr == 0 {
+		return
+	}
+
+	procCaptureClose.Call(
+		c.ptr,
+	)
 }

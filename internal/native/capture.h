@@ -35,6 +35,9 @@ typedef struct ViewfinderCaptureFormat
 
 } ViewfinderCaptureFormat;
 
+
+/* Lifecycle */
+
 VIEWFINDER_API int32_t ViewfinderCaptureCreate(
     ViewfinderCapture** outCapture
 );
@@ -42,6 +45,13 @@ VIEWFINDER_API int32_t ViewfinderCaptureCreate(
 VIEWFINDER_API int32_t ViewfinderCaptureInitialize(
     ViewfinderCapture* capture
 );
+
+VIEWFINDER_API void ViewfinderCaptureDestroy(
+    ViewfinderCapture* capture
+);
+
+
+/* Devices */
 
 VIEWFINDER_API int32_t ViewfinderCaptureGetDeviceCount(
     ViewfinderCapture* capture,
@@ -53,6 +63,9 @@ VIEWFINDER_API int32_t ViewfinderCaptureGetDevice(
     uint32_t index,
     ViewfinderCaptureDevice* outDevice
 );
+
+
+/* Formats */
 
 VIEWFINDER_API int32_t ViewfinderCaptureGetFormatCount(
     ViewfinderCapture* capture,
@@ -67,9 +80,23 @@ VIEWFINDER_API int32_t ViewfinderCaptureGetFormat(
     ViewfinderCaptureFormat* outFormat
 );
 
-VIEWFINDER_API void ViewfinderCaptureDestroy(
+
+/* Capture stream */
+
+VIEWFINDER_API int32_t ViewfinderCaptureOpen(
+    ViewfinderCapture* capture,
+    uint32_t deviceIndex,
+    uint32_t formatIndex
+);
+
+VIEWFINDER_API int32_t ViewfinderCaptureIsOpen(
     ViewfinderCapture* capture
 );
+
+VIEWFINDER_API void ViewfinderCaptureClose(
+    ViewfinderCapture* capture
+);
+
 
 #ifdef __cplusplus
 }

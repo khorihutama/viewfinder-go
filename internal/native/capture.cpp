@@ -20,7 +20,6 @@
 struct CaptureDeviceInfo
 {
     std::wstring name;
-
     IMFActivate* activate = nullptr;
 };
 
@@ -38,8 +37,11 @@ struct CaptureFormatInfo
 struct ViewfinderCapture
 {
     bool initialized = false;
+    bool opened = false;
 
     std::vector<CaptureDeviceInfo> devices;
+
+    IMFSourceReader* reader = nullptr;
 };
 
 static void ReleaseDevices(
@@ -139,6 +141,7 @@ static HRESULT EnumerateDevices(
 
         info.activate = devices[i];
 
+        // Transfer ownership to CaptureDeviceInfo.
         devices[i] = nullptr;
 
         capture->devices.push_back(
@@ -265,10 +268,11 @@ static HRESULT EnumerateFormats(
 
     IMFMediaSource* source = nullptr;
 
-    HRESULT hr = capture->devices[deviceIndex].activate->ActivateObject(
-        __uuidof(IMFMediaSource),
-        reinterpret_cast<void**>(&source)
-    );
+    HRESULT hr =
+        capture->devices[deviceIndex].activate->ActivateObject(
+            __uuidof(IMFMediaSource),
+            reinterpret_cast<void**>(&source)
+        );
 
     if (FAILED(hr))
     {
@@ -297,6 +301,7 @@ static HRESULT EnumerateFormats(
     {
         presentationDescriptor->Release();
         source->Release();
+
         return hr;
     }
 
@@ -341,6 +346,7 @@ static HRESULT EnumerateFormats(
         {
             handler->Release();
             streamDescriptor->Release();
+
             continue;
         }
 
@@ -348,6 +354,7 @@ static HRESULT EnumerateFormats(
         {
             handler->Release();
             streamDescriptor->Release();
+
             continue;
         }
 
@@ -630,6 +637,308 @@ VIEWFINDER_API int32_t ViewfinderCaptureGetFormat(
     return S_OK;
 }
 
+VIEWFINDER_API int32_t ViewfinderCaptureOpen(
+    ViewfinderCapture* capture,
+    uint32_t deviceIndex,
+    uint32_t formatIndex
+)
+{
+    if (!capture)
+    {
+        return E_INVALIDARG;
+    }
+
+    if (!capture->initialized)
+    {
+        return MF_E_NOT_INITIALIZED;
+    }
+
+    if (deviceIndex >= capture->devices.size())
+    {
+        return MF_E_NOT_FOUND;
+    }
+
+    // Close an existing stream.
+    ViewfinderCaptureClose(
+        capture
+    );
+
+    /*
+     * Get the requested media type.
+     *
+     * We enumerate the native media types again because
+     * IMFSourceReader works with the actual IMFMediaType
+     * object, not our simplified CaptureFormatInfo.
+     */
+
+    IMFMediaSource* source = nullptr;
+
+    HRESULT hr =
+        capture->devices[deviceIndex].activate->ActivateObject(
+            __uuidof(IMFMediaSource),
+            reinterpret_cast<void**>(&source)
+        );
+
+    if (FAILED(hr))
+    {
+        return static_cast<int32_t>(hr);
+    }
+
+    IMFPresentationDescriptor* presentationDescriptor = nullptr;
+
+    hr = source->CreatePresentationDescriptor(
+        &presentationDescriptor
+    );
+
+    if (FAILED(hr))
+    {
+        source->Release();
+
+        return static_cast<int32_t>(hr);
+    }
+
+    DWORD streamCount = 0;
+
+    hr = presentationDescriptor->GetStreamDescriptorCount(
+        &streamCount
+    );
+
+    if (FAILED(hr))
+    {
+        presentationDescriptor->Release();
+        source->Release();
+
+        return static_cast<int32_t>(hr);
+    }
+
+    IMFMediaType* selectedMediaType = nullptr;
+
+    bool found = false;
+
+    for (DWORD streamIndex = 0;
+         streamIndex < streamCount && !found;
+         ++streamIndex)
+    {
+        BOOL selected = FALSE;
+
+        IMFStreamDescriptor* streamDescriptor = nullptr;
+
+        hr = presentationDescriptor->GetStreamDescriptorByIndex(
+            streamIndex,
+            &selected,
+            &streamDescriptor
+        );
+
+        if (FAILED(hr))
+        {
+            continue;
+        }
+
+        IMFMediaTypeHandler* handler = nullptr;
+
+        hr = streamDescriptor->GetMediaTypeHandler(
+            &handler
+        );
+
+        if (FAILED(hr))
+        {
+            streamDescriptor->Release();
+
+            continue;
+        }
+
+        GUID majorType{};
+
+        hr = handler->GetMajorType(
+            &majorType
+        );
+
+        if (FAILED(hr) ||
+            majorType != MFMediaType_Video)
+        {
+            handler->Release();
+            streamDescriptor->Release();
+
+            continue;
+        }
+
+        DWORD typeCount = 0;
+
+        hr = handler->GetMediaTypeCount(
+            &typeCount
+        );
+
+        if (SUCCEEDED(hr))
+        {
+            uint32_t currentFormatIndex = 0;
+
+            for (DWORD typeIndex = 0;
+                 typeIndex < typeCount;
+                 ++typeIndex)
+            {
+                IMFMediaType* mediaType = nullptr;
+
+                hr = handler->GetMediaTypeByIndex(
+                    typeIndex,
+                    &mediaType
+                );
+
+                if (FAILED(hr))
+                {
+                    continue;
+                }
+
+                CaptureFormatInfo format;
+
+                if (SUCCEEDED(
+                    GetFormat(
+                        mediaType,
+                        format
+                    )
+                ))
+                {
+                    if (currentFormatIndex == formatIndex)
+                    {
+                        selectedMediaType = mediaType;
+                        found = true;
+
+                        break;
+                    }
+
+                    currentFormatIndex++;
+                }
+
+                mediaType->Release();
+            }
+        }
+
+        handler->Release();
+        streamDescriptor->Release();
+    }
+
+    if (!found || !selectedMediaType)
+    {
+        presentationDescriptor->Release();
+        source->Release();
+
+        return MF_E_NOT_FOUND;
+    }
+
+    /*
+     * Create the Source Reader.
+     */
+
+    IMFAttributes* attributes = nullptr;
+
+    hr = MFCreateAttributes(
+        &attributes,
+        2
+    );
+
+    if (FAILED(hr))
+    {
+        selectedMediaType->Release();
+        presentationDescriptor->Release();
+        source->Release();
+
+        return static_cast<int32_t>(hr);
+    }
+
+    /*
+     * We want video only.
+     */
+
+    hr = attributes->SetUINT32(
+        MF_READWRITE_DISABLE_CONVERTERS,
+        FALSE
+    );
+
+    if (FAILED(hr))
+    {
+        attributes->Release();
+        selectedMediaType->Release();
+        presentationDescriptor->Release();
+        source->Release();
+
+        return static_cast<int32_t>(hr);
+    }
+
+    hr = MFCreateSourceReaderFromMediaSource(
+        source,
+        attributes,
+        &capture->reader
+    );
+
+    attributes->Release();
+
+    if (FAILED(hr))
+    {
+        selectedMediaType->Release();
+        presentationDescriptor->Release();
+        source->Release();
+
+        capture->reader = nullptr;
+
+        return static_cast<int32_t>(hr);
+    }
+
+    /*
+     * Set the requested native media type.
+     */
+
+    hr = capture->reader->SetCurrentMediaType(
+        MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+        nullptr,
+        selectedMediaType
+    );
+
+    selectedMediaType->Release();
+    presentationDescriptor->Release();
+    source->Release();
+
+    if (FAILED(hr))
+    {
+        capture->reader->Release();
+        capture->reader = nullptr;
+
+        return static_cast<int32_t>(hr);
+    }
+
+    capture->opened = true;
+
+    return S_OK;
+}
+
+VIEWFINDER_API int32_t ViewfinderCaptureIsOpen(
+    ViewfinderCapture* capture
+)
+{
+    if (!capture)
+    {
+        return E_INVALIDARG;
+    }
+
+    return capture->opened ? 1 : 0;
+}
+
+VIEWFINDER_API void ViewfinderCaptureClose(
+    ViewfinderCapture* capture
+)
+{
+    if (!capture)
+    {
+        return;
+    }
+
+    if (capture->reader)
+    {
+        capture->reader->Release();
+        capture->reader = nullptr;
+    }
+
+    capture->opened = false;
+}
+
 VIEWFINDER_API void ViewfinderCaptureDestroy(
     ViewfinderCapture* capture
 )
@@ -639,7 +948,13 @@ VIEWFINDER_API void ViewfinderCaptureDestroy(
         return;
     }
 
-    ReleaseDevices(capture);
+    ViewfinderCaptureClose(
+        capture
+    );
+
+    ReleaseDevices(
+        capture
+    );
 
     if (capture->initialized)
     {

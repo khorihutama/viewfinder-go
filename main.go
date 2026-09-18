@@ -72,11 +72,66 @@ func main() {
 	)
 
 	devices, err := capture.Devices()
-	if err != nil {
-		log.Fatalf(
-			"enumerate capture devices: %v",
-			err,
+	if len(devices) == 0 {
+		log.Println("No video capture devices found")
+	} else {
+		device := devices[0]
+
+		log.Printf(
+			"Using device [%d]: %s",
+			device.Index,
+			device.Name,
 		)
+
+		formats, err := capture.Formats(
+			device.Index,
+		)
+
+		if err != nil {
+			log.Fatalf(
+				"enumerate formats: %v",
+				err,
+			)
+		}
+
+		if len(formats) == 0 {
+			log.Fatal("No video formats found")
+		}
+
+		for _, format := range formats {
+			fps := float64(format.FPSNumerator) /
+				float64(format.FPSDenominator)
+
+			log.Printf(
+				"[%d] %dx%d @ %.2f FPS | %s",
+				format.Index,
+				format.Width,
+				format.Height,
+				fps,
+				format.Subtype,
+			)
+		}
+
+		selected := formats[0]
+
+		log.Printf(
+			"Opening format [%d]: %dx%d",
+			selected.Index,
+			selected.Width,
+			selected.Height,
+		)
+
+		if err := capture.Open(
+			device.Index,
+			selected.Index,
+		); err != nil {
+			log.Fatalf(
+				"open capture: %v",
+				err,
+			)
+		}
+
+		log.Println("Capture stream opened")
 	}
 
 	log.Println("")
