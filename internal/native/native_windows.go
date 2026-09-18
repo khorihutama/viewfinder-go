@@ -21,12 +21,8 @@ var (
 		"ViewfinderCreateRenderer",
 	)
 
-	procClear = dll.NewProc(
-		"ViewfinderClear",
-	)
-
-	procPresent = dll.NewProc(
-		"ViewfinderPresent",
+	procRender = dll.NewProc(
+		"ViewfinderRender",
 	)
 
 	procDestroyRenderer = dll.NewProc(
@@ -55,14 +51,14 @@ func CreateRenderer(
 
 	var renderer uintptr
 
-	r1, _, _ := procCreateRenderer.Call(
+	result, _, _ := procCreateRenderer.Call(
 		hwnd,
 		uintptr(width),
 		uintptr(height),
 		uintptr(unsafe.Pointer(&renderer)),
 	)
 
-	hr := int32(uint32(r1))
+	hr := int32(uint32(result))
 
 	if hr < 0 {
 		return nil, fmt.Errorf(
@@ -82,54 +78,22 @@ func CreateRenderer(
 	}, nil
 }
 
-func (r *Renderer) Clear(
-	red float32,
-	green float32,
-	blue float32,
-	alpha float32,
-) error {
+func (r *Renderer) Render() error {
 	if r == nil || r.ptr == 0 {
 		return fmt.Errorf(
 			"renderer is nil",
 		)
 	}
 
-	r1, _, _ := procClear.Call(
-		r.ptr,
-		uintptr(*(*uint32)(unsafe.Pointer(&red))),
-		uintptr(*(*uint32)(unsafe.Pointer(&green))),
-		uintptr(*(*uint32)(unsafe.Pointer(&blue))),
-		uintptr(*(*uint32)(unsafe.Pointer(&alpha))),
-	)
-
-	hr := int32(uint32(r1))
-
-	if hr < 0 {
-		return fmt.Errorf(
-			"ViewfinderClear failed: HRESULT 0x%08X",
-			uint32(hr),
-		)
-	}
-
-	return nil
-}
-
-func (r *Renderer) Present() error {
-	if r == nil || r.ptr == 0 {
-		return fmt.Errorf(
-			"renderer is nil",
-		)
-	}
-
-	r1, _, _ := procPresent.Call(
+	result, _, _ := procRender.Call(
 		r.ptr,
 	)
 
-	hr := int32(uint32(r1))
+	hr := int32(uint32(result))
 
 	if hr < 0 {
 		return fmt.Errorf(
-			"ViewfinderPresent failed: HRESULT 0x%08X",
+			"ViewfinderRender failed: HRESULT 0x%08X",
 			uint32(hr),
 		)
 	}

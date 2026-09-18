@@ -1,13 +1,13 @@
 #pragma once
 
+#include <windows.h>
+#include <stdint.h>
+
 #ifdef VIEWFINDER_NATIVE_EXPORTS
 #define VIEWFINDER_API __declspec(dllexport)
 #else
 #define VIEWFINDER_API __declspec(dllimport)
 #endif
-
-#include <windows.h>
-#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -22,15 +22,7 @@ VIEWFINDER_API int32_t ViewfinderCreateRenderer(
     ViewfinderRenderer** outRenderer
 );
 
-VIEWFINDER_API int32_t ViewfinderClear(
-    ViewfinderRenderer* renderer,
-    float r,
-    float g,
-    float b,
-    float a
-);
-
-VIEWFINDER_API int32_t ViewfinderPresent(
+VIEWFINDER_API int32_t ViewfinderRender(
     ViewfinderRenderer* renderer
 );
 

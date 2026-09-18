@@ -1,3 +1,5 @@
+//go:build windows
+
 package win32
 
 import (
@@ -12,14 +14,15 @@ const (
 	CS_VREDRAW = 0x0001
 
 	WS_OVERLAPPEDWINDOW = 0x00CF0000
-
-	CW_USEDEFAULT = 0x80000000
+	CW_USEDEFAULT       = 0x80000000
 
 	SW_SHOW = 5
 
 	WM_DESTROY = 0x0002
 	WM_CLOSE   = 0x0010
 	WM_QUIT    = 0x0012
+
+	PM_REMOVE = 0x0001
 )
 
 type point struct {
@@ -58,12 +61,18 @@ var (
 	procRegisterClassExW = user32.NewProc("RegisterClassExW")
 	procCreateWindowExW  = user32.NewProc("CreateWindowExW")
 	procDefWindowProcW   = user32.NewProc("DefWindowProcW")
-	procShowWindow       = user32.NewProc("ShowWindow")
-	procUpdateWindow     = user32.NewProc("UpdateWindow")
+
+	procShowWindow   = user32.NewProc("ShowWindow")
+	procUpdateWindow = user32.NewProc("UpdateWindow")
+
 	procGetMessageW      = user32.NewProc("GetMessageW")
+	procPeekMessageW     = user32.NewProc("PeekMessageW")
 	procTranslateMessage = user32.NewProc("TranslateMessage")
 	procDispatchMessageW = user32.NewProc("DispatchMessageW")
 	procPostQuitMessage  = user32.NewProc("PostQuitMessage")
+
+	procDestroyWindow = user32.NewProc("DestroyWindow")
+
 	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
 
 	windowProc = windows.NewCallback(wndProc)
@@ -74,7 +83,9 @@ type Window struct {
 }
 
 func Create(title string, width, height int) (*Window, error) {
-	className, err := windows.UTF16PtrFromString("ViewfinderGoWindow")
+	className, err := windows.UTF16PtrFromString(
+		"ViewfinderGoWindow",
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -85,16 +96,28 @@ func Create(title string, width, height int) (*Window, error) {
 	}
 
 	hInstance, _, err := procGetModuleHandleW.Call(0)
+
 	if hInstance == 0 {
-		return nil, fmt.Errorf("GetModuleHandleW failed: %w", err)
+		return nil, fmt.Errorf(
+			"GetModuleHandleW failed: %w",
+			err,
+		)
 	}
 
 	class := wndClassEx{
-		CbSize:        uint32(unsafe.Sizeof(wndClassEx{})),
-		Style:         CS_HREDRAW | CS_VREDRAW,
-		LpfnWndProc:   windowProc,
-		HInstance:     windows.Handle(hInstance),
+		CbSize: uint32(
+			unsafe.Sizeof(wndClassEx{}),
+		),
+
+		Style: CS_HREDRAW | CS_VREDRAW,
+
+		LpfnWndProc: windowProc,
+
+		HInstance: windows.Handle(hInstance),
+
+		// COLOR_WINDOW + 1
 		HbrBackground: windows.Handle(6),
+
 		LpszClassName: className,
 	}
 
@@ -102,40 +125,91 @@ func Create(title string, width, height int) (*Window, error) {
 		uintptr(unsafe.Pointer(&class)),
 	)
 
-	if atom == 0 {
-		// ERROR_CLASS_ALREADY_EXISTS is acceptable if we already registered it.
-		if err != windows.ERROR_CLASS_ALREADY_EXISTS {
-			return nil, fmt.Errorf("RegisterClassExW failed: %w", err)
-		}
+	if atom == 0 && err != windows.ERROR_CLASS_ALREADY_EXISTS {
+		return nil, fmt.Errorf(
+			"RegisterClassExW failed: %w",
+			err,
+		)
 	}
 
 	hwnd, _, err := procCreateWindowExW.Call(
 		0,
+
 		uintptr(unsafe.Pointer(className)),
+
 		uintptr(unsafe.Pointer(titlePtr)),
+
 		WS_OVERLAPPEDWINDOW,
+
 		CW_USEDEFAULT,
 		CW_USEDEFAULT,
+
 		uintptr(width),
 		uintptr(height),
+
 		0,
 		0,
+
 		hInstance,
+
 		0,
 	)
 
 	if hwnd == 0 {
-		return nil, fmt.Errorf("CreateWindowExW failed: %w", err)
+		return nil, fmt.Errorf(
+			"CreateWindowExW failed: %w",
+			err,
+		)
 	}
 
-	procShowWindow.Call(hwnd, SW_SHOW)
-	procUpdateWindow.Call(hwnd)
+	procShowWindow.Call(
+		hwnd,
+		SW_SHOW,
+	)
+
+	procUpdateWindow.Call(
+		hwnd,
+	)
 
 	return &Window{
 		HWND: hwnd,
 	}, nil
 }
 
+// Pump processes all currently pending Windows messages.
+//
+// It does not block, which allows the renderer to continue running.
+func (w *Window) Pump() (bool, error) {
+	var message msg
+
+	for {
+		ret, _, _ := procPeekMessageW.Call(
+			uintptr(unsafe.Pointer(&message)),
+			0,
+			0,
+			0,
+			PM_REMOVE,
+		)
+
+		if ret == 0 {
+			return true, nil
+		}
+
+		if message.Message == WM_QUIT {
+			return false, nil
+		}
+
+		procTranslateMessage.Call(
+			uintptr(unsafe.Pointer(&message)),
+		)
+
+		procDispatchMessageW.Call(
+			uintptr(unsafe.Pointer(&message)),
+		)
+	}
+}
+
+// Run provides a traditional blocking Windows message loop.
 func (w *Window) Run() error {
 	var message msg
 
@@ -148,7 +222,10 @@ func (w *Window) Run() error {
 		)
 
 		if int32(ret) == -1 {
-			return fmt.Errorf("GetMessageW failed: %w", err)
+			return fmt.Errorf(
+				"GetMessageW failed: %w",
+				err,
+			)
 		}
 
 		if ret == 0 {
@@ -174,6 +251,10 @@ func wndProc(
 	lParam uintptr,
 ) uintptr {
 	switch message {
+	case WM_CLOSE:
+		procDestroyWindow.Call(hwnd)
+		return 0
+
 	case WM_DESTROY:
 		procPostQuitMessage.Call(0)
 		return 0

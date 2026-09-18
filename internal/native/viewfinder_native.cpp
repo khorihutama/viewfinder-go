@@ -5,6 +5,8 @@
 #include <d3d11.h>
 #include <dxgi1_2.h>
 
+#include <new>
+
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
 
@@ -12,9 +14,7 @@ struct ViewfinderRenderer
 {
     ID3D11Device* device = nullptr;
     ID3D11DeviceContext* context = nullptr;
-
     IDXGISwapChain1* swapChain = nullptr;
-
     ID3D11RenderTargetView* renderTargetView = nullptr;
 };
 
@@ -23,7 +23,9 @@ static void ReleaseRendererResources(
 )
 {
     if (!renderer)
+    {
         return;
+    }
 
     if (renderer->renderTargetView)
     {
@@ -56,7 +58,9 @@ static HRESULT CreateD3D11Device(
 )
 {
     if (!outDevice || !outContext)
+    {
         return E_INVALIDARG;
+    }
 
     *outDevice = nullptr;
     *outContext = nullptr;
@@ -71,10 +75,6 @@ static HRESULT CreateD3D11Device(
 
     UINT flags =
         D3D11_CREATE_DEVICE_BGRA_SUPPORT;
-
-#ifdef _DEBUG
-    flags |= D3D11_CREATE_DEVICE_DEBUG;
-#endif
 
     HRESULT hr = D3D11CreateDevice(
         nullptr,
@@ -101,7 +101,9 @@ static HRESULT CreateSwapChain(
 )
 {
     if (!device || !hwnd || !outSwapChain)
+    {
         return E_INVALIDARG;
+    }
 
     *outSwapChain = nullptr;
 
@@ -113,7 +115,9 @@ static HRESULT CreateSwapChain(
     );
 
     if (FAILED(hr))
+    {
         return hr;
+    }
 
     IDXGIAdapter* adapter = nullptr;
 
@@ -186,7 +190,9 @@ static HRESULT CreateSwapChain(
     dxgiDevice->Release();
 
     if (FAILED(hr))
+    {
         return hr;
+    }
 
     *outSwapChain = swapChain;
 
@@ -199,8 +205,12 @@ static HRESULT CreateRenderTarget(
     ID3D11RenderTargetView** outRenderTarget
 )
 {
-    if (!device || !swapChain || !outRenderTarget)
+    if (!device ||
+        !swapChain ||
+        !outRenderTarget)
+    {
         return E_INVALIDARG;
+    }
 
     *outRenderTarget = nullptr;
 
@@ -213,7 +223,9 @@ static HRESULT CreateRenderTarget(
     );
 
     if (FAILED(hr))
+    {
         return hr;
+    }
 
     ID3D11RenderTargetView* renderTarget = nullptr;
 
@@ -226,7 +238,9 @@ static HRESULT CreateRenderTarget(
     backBuffer->Release();
 
     if (FAILED(hr))
+    {
         return hr;
+    }
 
     *outRenderTarget = renderTarget;
 
@@ -241,12 +255,19 @@ VIEWFINDER_API int32_t ViewfinderCreateRenderer(
 )
 {
     if (!hwnd || !outRenderer)
+    {
         return E_INVALIDARG;
+    }
 
     *outRenderer = nullptr;
 
     ViewfinderRenderer* renderer =
-        new ViewfinderRenderer();
+        new (std::nothrow) ViewfinderRenderer();
+
+    if (!renderer)
+    {
+        return E_OUTOFMEMORY;
+    }
 
     HRESULT hr = CreateD3D11Device(
         &renderer->device,
@@ -255,6 +276,7 @@ VIEWFINDER_API int32_t ViewfinderCreateRenderer(
 
     if (FAILED(hr))
     {
+        ReleaseRendererResources(renderer);
         delete renderer;
         return static_cast<int32_t>(hr);
     }
@@ -292,27 +314,25 @@ VIEWFINDER_API int32_t ViewfinderCreateRenderer(
     return S_OK;
 }
 
-VIEWFINDER_API int32_t ViewfinderClear(
-    ViewfinderRenderer* renderer,
-    float r,
-    float g,
-    float b,
-    float a
+VIEWFINDER_API int32_t ViewfinderRender(
+    ViewfinderRenderer* renderer
 )
 {
     if (!renderer ||
+        !renderer->device ||
         !renderer->context ||
+        !renderer->swapChain ||
         !renderer->renderTargetView)
     {
         return E_INVALIDARG;
     }
 
-    const float color[4] =
+    const float clearColor[4] =
     {
-        r,
-        g,
-        b,
-        a
+        0.05f,
+        0.05f,
+        0.10f,
+        1.0f
     };
 
     renderer->context->OMSetRenderTargets(
@@ -323,18 +343,8 @@ VIEWFINDER_API int32_t ViewfinderClear(
 
     renderer->context->ClearRenderTargetView(
         renderer->renderTargetView,
-        color
+        clearColor
     );
-
-    return S_OK;
-}
-
-VIEWFINDER_API int32_t ViewfinderPresent(
-    ViewfinderRenderer* renderer
-)
-{
-    if (!renderer || !renderer->swapChain)
-        return E_INVALIDARG;
 
     HRESULT hr = renderer->swapChain->Present(
         1,
@@ -349,9 +359,11 @@ VIEWFINDER_API void ViewfinderDestroyRenderer(
 )
 {
     if (!renderer)
+    {
         return;
+    }
 
-ReleaseRendererResources(renderer);
+    ReleaseRendererResources(renderer);
 
     delete renderer;
 }
