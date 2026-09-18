@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 	"runtime"
-	"time"
 
 	"github.com/khorihutama/viewfinder-go/internal/native"
 	"github.com/khorihutama/viewfinder-go/internal/win32"
@@ -12,8 +11,6 @@ import (
 const (
 	windowWidth  = 1280
 	windowHeight = 720
-
-	targetFPS = 60
 )
 
 func main() {
@@ -59,56 +56,62 @@ func main() {
 
 	defer capture.Close()
 
-	log.Println("Media Foundation capture object created")
+	log.Println(
+		"Media Foundation capture object created",
+	)
 
 	if err := capture.Initialize(); err != nil {
 		log.Fatalf(
-			"initialize Media Foundation: %v",
+			"initialize capture: %v",
 			err,
 		)
 	}
 
-	log.Println("Media Foundation initialized")
+	log.Println(
+		"Media Foundation initialized",
+	)
 
-	frameDuration := time.Second / targetFPS
-	nextFrame := time.Now()
+	devices, err := capture.Devices()
+	if err != nil {
+		log.Fatalf(
+			"enumerate capture devices: %v",
+			err,
+		)
+	}
 
-	for {
-		running, err := window.Pump()
-		if err != nil {
-			log.Fatalf(
-				"message pump: %v",
-				err,
-			)
-		}
+	log.Println("")
 
-		if !running {
-			log.Println("Window closed")
-			return
-		}
-
-		now := time.Now()
-
-		if now.Before(nextFrame) {
-			runtime.Gosched()
-			continue
-		}
-
-		if err := renderer.Render(); err != nil {
-			log.Fatalf(
-				"render: %v",
-				err,
-			)
-		}
-
-		nextFrame = nextFrame.Add(
-			frameDuration,
+	if len(devices) == 0 {
+		log.Println(
+			"No video capture devices found",
+		)
+	} else {
+		log.Printf(
+			"Found %d video capture device(s):",
+			len(devices),
 		)
 
-		if nextFrame.Before(now) {
-			nextFrame = now.Add(
-				frameDuration,
+		for _, device := range devices {
+			log.Printf(
+				"[%d] %s",
+				device.Index,
+				device.Name,
 			)
 		}
 	}
+
+	log.Println("")
+	log.Println(
+		"Press Ctrl+C or close the window to exit.",
+	)
+
+	// Keep the Win32 window responsive.
+	if err := window.Run(); err != nil {
+		log.Fatalf(
+			"message loop: %v",
+			err,
+		)
+	}
+
+	log.Println("Window closed")
 }

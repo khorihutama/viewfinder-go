@@ -1,5 +1,3 @@
-#define VIEWFINDER_NATIVE_EXPORTS
-
 #include "viewfinder_native.h"
 
 #include <d3d11.h>

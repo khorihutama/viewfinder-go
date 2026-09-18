@@ -14,12 +14,31 @@ extern "C" {
 
 typedef struct ViewfinderCapture ViewfinderCapture;
 
+typedef struct ViewfinderCaptureDevice
+{
+    uint32_t index;
+
+    wchar_t name[256];
+
+} ViewfinderCaptureDevice;
+
 VIEWFINDER_API int32_t ViewfinderCaptureCreate(
     ViewfinderCapture** outCapture
 );
 
 VIEWFINDER_API int32_t ViewfinderCaptureInitialize(
     ViewfinderCapture* capture
+);
+
+VIEWFINDER_API int32_t ViewfinderCaptureGetDeviceCount(
+    ViewfinderCapture* capture,
+    uint32_t* outCount
+);
+
+VIEWFINDER_API int32_t ViewfinderCaptureGetDevice(
+    ViewfinderCapture* capture,
+    uint32_t index,
+    ViewfinderCaptureDevice* outDevice
 );
 
 VIEWFINDER_API void ViewfinderCaptureDestroy(
