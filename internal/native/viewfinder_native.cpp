@@ -327,11 +327,20 @@ VIEWFINDER_API int32_t ViewfinderRender(
         return E_INVALIDARG;
     }
 
+    static float phase = 0.0f;
+
+    phase += 0.005f;
+
+    if (phase >= 1.0f)
+    {
+        phase = 0.0f;
+    }
+
     const float clearColor[4] =
     {
+        0.05f + phase * 0.15f,
         0.05f,
-        0.05f,
-        0.10f,
+        0.08f + (1.0f - phase) * 0.15f,
         1.0f
     };
 
