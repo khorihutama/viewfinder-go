@@ -30,6 +30,23 @@ VIEWFINDER_API void ViewfinderDestroyRenderer(
     ViewfinderRenderer* renderer
 );
 
+VIEWFINDER_API int32_t ViewfinderRendererInitialize(
+    void* hwnd,
+    uint32_t width,
+    uint32_t height
+);
+
+VIEWFINDER_API int32_t ViewfinderRendererClear(
+    float red,
+    float green,
+    float blue,
+    float alpha
+);
+
+VIEWFINDER_API int32_t ViewfinderRendererPresent();
+
+VIEWFINDER_API void ViewfinderRendererDestroy();
+
 #ifdef __cplusplus
 }
 #endif

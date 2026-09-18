@@ -9,72 +9,61 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-const (
-	driverTypeHardware = 1
-
-	d3d11SDKVersion = 7
-
-	createDeviceBGRA = 0x20
-
-	featureLevel11_0 = 0xB000
-	featureLevel11_1 = 0xB100
-)
-
 var (
-	d3d11DLL = windows.NewLazySystemDLL("d3d11.dll")
-
+	d3d11DLL          = windows.NewLazySystemDLL("d3d11.dll")
+	dxgiDLL           = windows.NewLazySystemDLL("dxgi.dll")
 	d3d11CreateDevice = d3d11DLL.NewProc("D3D11CreateDevice")
 )
 
-// Device represents the Direct3D 11 device and immediate context.
+const (
+	d3d11SDKVersion = 7
+
+	d3dDriverTypeHardware = 1
+
+	d3dFeatureLevel11_0 = 0xB000
+	d3dFeatureLevel11_1 = 0xB100
+)
+
 type Device struct {
 	device       uintptr
 	context      uintptr
 	featureLevel uint32
 }
 
-// Initialize creates a hardware-accelerated Direct3D 11 device.
 func Initialize() (*Device, error) {
-	featureLevels := []uint32{
-		featureLevel11_1,
-		featureLevel11_0,
-	}
+	var device uintptr
+	var context uintptr
+	var featureLevel uint32
 
-	var (
-		device       uintptr
-		context      uintptr
-		featureLevel uint32
-	)
-
-	hr, _, _ := d3d11CreateDevice.Call(
+	result, _, _ := d3d11CreateDevice.Call(
 		0,
-		driverTypeHardware,
+		d3dDriverTypeHardware,
 		0,
-		createDeviceBGRA,
-		uintptr(unsafe.Pointer(&featureLevels[0])),
-		uintptr(len(featureLevels)),
+		0,
+		0,
+		0,
 		d3d11SDKVersion,
 		uintptr(unsafe.Pointer(&device)),
 		uintptr(unsafe.Pointer(&featureLevel)),
 		uintptr(unsafe.Pointer(&context)),
 	)
 
-	if hr != 0 {
+	if result != 0 {
 		return nil, fmt.Errorf(
-			"D3D11CreateDevice failed: HRESULT 0x%08X",
-			uint32(hr),
+			"D3D11CreateDevice failed: 0x%08X",
+			uint32(result),
 		)
 	}
 
 	if device == 0 {
 		return nil, fmt.Errorf(
-			"D3D11CreateDevice returned a nil device",
+			"D3D11CreateDevice returned null device",
 		)
 	}
 
 	if context == 0 {
 		return nil, fmt.Errorf(
-			"D3D11CreateDevice returned a nil context",
+			"D3D11CreateDevice returned null context",
 		)
 	}
 
@@ -85,7 +74,6 @@ func Initialize() (*Device, error) {
 	}, nil
 }
 
-// DevicePointer returns the native ID3D11Device pointer.
 func (d *Device) DevicePointer() uintptr {
 	if d == nil {
 		return 0
@@ -94,7 +82,6 @@ func (d *Device) DevicePointer() uintptr {
 	return d.device
 }
 
-// ContextPointer returns the native ID3D11DeviceContext pointer.
 func (d *Device) ContextPointer() uintptr {
 	if d == nil {
 		return 0
@@ -103,7 +90,6 @@ func (d *Device) ContextPointer() uintptr {
 	return d.context
 }
 
-// FeatureLevel returns the selected Direct3D feature level.
 func (d *Device) FeatureLevel() uint32 {
 	if d == nil {
 		return 0

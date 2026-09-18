@@ -33,6 +33,21 @@ func main() {
 
 	log.Println("Win32 window created")
 
+	if err := renderer.InitializeWindow(
+		window.HWND,
+		1280,
+		720,
+	); err != nil {
+		log.Fatalf(
+			"failed to initialize renderer window: %v",
+			err,
+		)
+	}
+
+	log.Println("D3D11 swap chain initialized")
+
+	defer renderer.DestroyWindowRenderer()
+
 	// ------------------------------------------------------------
 	// Initialize D3D11
 	// ------------------------------------------------------------
@@ -248,14 +263,30 @@ func main() {
 
 	log.Println("Frame test completed")
 
+	go func() {
+		for {
+			if err := renderer.Clear(
+				0.1,
+				0.1,
+				0.1,
+				1.0,
+			); err != nil {
+				log.Printf("renderer clear failed: %v", err)
+				return
+			}
+
+			if err := renderer.Present(); err != nil {
+				log.Printf("renderer present failed: %v", err)
+				return
+			}
+		}
+	}()
+
 	// ------------------------------------------------------------
 	// Keep window alive
 	// ------------------------------------------------------------
 
 	if err := window.Run(); err != nil {
-		log.Fatalf(
-			"window message loop failed: %v",
-			err,
-		)
+		log.Fatalf("window message loop failed: %v", err)
 	}
 }
