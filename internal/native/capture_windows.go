@@ -17,7 +17,20 @@ type CaptureDevice struct {
 	Name  string
 }
 
+type CaptureFormat struct {
+	Index uint32
+
+	Width  uint32
+	Height uint32
+
+	FPSNumerator   uint32
+	FPSDenominator uint32
+
+	Subtype string
+}
+
 const maxDeviceName = 256
+const maxSubtypeName = 64
 
 var (
 	procCaptureCreate = dll.NewProc(
@@ -36,6 +49,14 @@ var (
 		"ViewfinderCaptureGetDevice",
 	)
 
+	procCaptureGetFormatCount = dll.NewProc(
+		"ViewfinderCaptureGetFormatCount",
+	)
+
+	procCaptureGetFormat = dll.NewProc(
+		"ViewfinderCaptureGetFormat",
+	)
+
 	procCaptureDestroy = dll.NewProc(
 		"ViewfinderCaptureDestroy",
 	)
@@ -43,8 +64,19 @@ var (
 
 type nativeCaptureDevice struct {
 	Index uint32
+	Name  [maxDeviceName]uint16
+}
 
-	Name [maxDeviceName]uint16
+type nativeCaptureFormat struct {
+	Index uint32
+
+	Width  uint32
+	Height uint32
+
+	FPSNumerator   uint32
+	FPSDenominator uint32
+
+	Subtype [maxSubtypeName]uint16
 }
 
 func CreateCapture() (*Capture, error) {
@@ -113,9 +145,13 @@ func (c *Capture) DeviceCount() (uint32, error) {
 	return count, nil
 }
 
-func (c *Capture) Device(index uint32) (*CaptureDevice, error) {
+func (c *Capture) Device(
+	index uint32,
+) (*CaptureDevice, error) {
 	if c == nil || c.ptr == 0 {
-		return nil, fmt.Errorf("capture is nil")
+		return nil, fmt.Errorf(
+			"capture is nil",
+		)
 	}
 
 	var nativeDevice nativeCaptureDevice
@@ -174,6 +210,116 @@ func (c *Capture) Devices() ([]CaptureDevice, error) {
 	}
 
 	return devices, nil
+}
+
+func (c *Capture) FormatCount(
+	deviceIndex uint32,
+) (uint32, error) {
+	if c == nil || c.ptr == 0 {
+		return 0, fmt.Errorf(
+			"capture is nil",
+		)
+	}
+
+	var count uint32
+
+	result, _, _ := procCaptureGetFormatCount.Call(
+		c.ptr,
+		uintptr(deviceIndex),
+		uintptr(unsafe.Pointer(&count)),
+	)
+
+	if err := checkHRESULT(
+		result,
+		"ViewfinderCaptureGetFormatCount",
+	); err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
+func (c *Capture) Format(
+	deviceIndex uint32,
+	formatIndex uint32,
+) (*CaptureFormat, error) {
+	if c == nil || c.ptr == 0 {
+		return nil, fmt.Errorf(
+			"capture is nil",
+		)
+	}
+
+	var nativeFormat nativeCaptureFormat
+
+	result, _, _ := procCaptureGetFormat.Call(
+		c.ptr,
+		uintptr(deviceIndex),
+		uintptr(formatIndex),
+		uintptr(unsafe.Pointer(&nativeFormat)),
+	)
+
+	if err := checkHRESULT(
+		result,
+		"ViewfinderCaptureGetFormat",
+	); err != nil {
+		return nil, err
+	}
+
+	subtype := syscall.UTF16ToString(
+		nativeFormat.Subtype[:],
+	)
+
+	return &CaptureFormat{
+		Index: nativeFormat.Index,
+
+		Width:  nativeFormat.Width,
+		Height: nativeFormat.Height,
+
+		FPSNumerator:   nativeFormat.FPSNumerator,
+		FPSDenominator: nativeFormat.FPSDenominator,
+
+		Subtype: subtype,
+	}, nil
+}
+
+func (c *Capture) Formats(
+	deviceIndex uint32,
+) ([]CaptureFormat, error) {
+	count, err := c.FormatCount(
+		deviceIndex,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	formats := make(
+		[]CaptureFormat,
+		0,
+		count,
+	)
+
+	for i := uint32(0); i < count; i++ {
+		format, err := c.Format(
+			deviceIndex,
+			i,
+		)
+
+		if err != nil {
+			return nil, fmt.Errorf(
+				"get format %d: %w",
+				i,
+				err,
+			)
+		}
+
+		formats = append(
+			formats,
+			*format,
+		)
+	}
+
+	return formats, nil
 }
 
 func (c *Capture) Close() {

@@ -80,22 +80,42 @@ func main() {
 	}
 
 	log.Println("")
+	log.Println("Capture devices:")
 
-	if len(devices) == 0 {
-		log.Println(
-			"No video capture devices found",
-		)
-	} else {
+	for _, device := range devices {
 		log.Printf(
-			"Found %d video capture device(s):",
-			len(devices),
+			"[%d] %s",
+			device.Index,
+			device.Name,
 		)
 
-		for _, device := range devices {
+		formats, err := capture.Formats(
+			device.Index,
+		)
+
+		if err != nil {
 			log.Printf(
-				"[%d] %s",
-				device.Index,
-				device.Name,
+				"    failed to enumerate formats: %v",
+				err,
+			)
+
+			continue
+		}
+
+		for _, format := range formats {
+			fps := float64(
+				format.FPSNumerator,
+			) / float64(
+				format.FPSDenominator,
+			)
+
+			log.Printf(
+				"    [%d] %dx%d @ %.2f FPS | %s",
+				format.Index,
+				format.Width,
+				format.Height,
+				fps,
+				format.Subtype,
 			)
 		}
 	}
@@ -105,7 +125,6 @@ func main() {
 		"Press Ctrl+C or close the window to exit.",
 	)
 
-	// Keep the Win32 window responsive.
 	if err := window.Run(); err != nil {
 		log.Fatalf(
 			"message loop: %v",

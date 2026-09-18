@@ -15,11 +15,24 @@
 #pragma comment(lib, "mf.lib")
 #pragma comment(lib, "mfuuid.lib")
 #pragma comment(lib, "mfreadwrite.lib")
+#pragma comment(lib, "ole32.lib")
 
 struct CaptureDeviceInfo
 {
     std::wstring name;
+
     IMFActivate* activate = nullptr;
+};
+
+struct CaptureFormatInfo
+{
+    uint32_t width = 0;
+    uint32_t height = 0;
+
+    uint32_t fpsNumerator = 0;
+    uint32_t fpsDenominator = 1;
+
+    std::wstring subtype;
 };
 
 struct ViewfinderCapture
@@ -105,30 +118,27 @@ static HRESULT EnumerateDevices(
         WCHAR* name = nullptr;
         UINT32 nameLength = 0;
 
-        hr = devices[i]->GetAllocatedString(
+        HRESULT nameHr = devices[i]->GetAllocatedString(
             MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME,
             &name,
             &nameLength
         );
 
-        std::wstring deviceName;
+        CaptureDeviceInfo info;
 
-        if (SUCCEEDED(hr) && name)
+        if (SUCCEEDED(nameHr) && name)
         {
-            deviceName = name;
+            info.name = name;
+
             CoTaskMemFree(name);
         }
         else
         {
-            deviceName = L"Unknown Video Device";
+            info.name = L"Unknown Video Device";
         }
 
-        CaptureDeviceInfo info;
-
-        info.name = deviceName;
         info.activate = devices[i];
 
-        // We now own this reference.
         devices[i] = nullptr;
 
         capture->devices.push_back(
@@ -136,7 +146,6 @@ static HRESULT EnumerateDevices(
         );
     }
 
-    // Release anything not transferred.
     for (UINT32 i = 0; i < deviceCount; ++i)
     {
         if (devices[i])
@@ -146,6 +155,250 @@ static HRESULT EnumerateDevices(
     }
 
     CoTaskMemFree(devices);
+
+    return S_OK;
+}
+
+static std::wstring GUIDToString(
+    const GUID& guid
+)
+{
+    LPOLESTR string = nullptr;
+
+    HRESULT hr = StringFromCLSID(
+        guid,
+        &string
+    );
+
+    if (FAILED(hr) || !string)
+    {
+        return L"Unknown";
+    }
+
+    std::wstring result(string);
+
+    CoTaskMemFree(string);
+
+    return result;
+}
+
+static HRESULT GetFormat(
+    IMFMediaType* mediaType,
+    CaptureFormatInfo& format
+)
+{
+    if (!mediaType)
+    {
+        return E_INVALIDARG;
+    }
+
+    UINT32 width = 0;
+    UINT32 height = 0;
+
+    HRESULT hr = MFGetAttributeSize(
+        mediaType,
+        MF_MT_FRAME_SIZE,
+        &width,
+        &height
+    );
+
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    UINT32 numerator = 0;
+    UINT32 denominator = 1;
+
+    hr = MFGetAttributeRatio(
+        mediaType,
+        MF_MT_FRAME_RATE,
+        &numerator,
+        &denominator
+    );
+
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    GUID subtype{};
+
+    hr = mediaType->GetGUID(
+        MF_MT_SUBTYPE,
+        &subtype
+    );
+
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    format.width = width;
+    format.height = height;
+
+    format.fpsNumerator = numerator;
+    format.fpsDenominator = denominator;
+
+    format.subtype = GUIDToString(subtype);
+
+    return S_OK;
+}
+
+static HRESULT EnumerateFormats(
+    ViewfinderCapture* capture,
+    uint32_t deviceIndex,
+    std::vector<CaptureFormatInfo>& formats
+)
+{
+    if (!capture)
+    {
+        return E_INVALIDARG;
+    }
+
+    if (deviceIndex >= capture->devices.size())
+    {
+        return MF_E_NOT_FOUND;
+    }
+
+    formats.clear();
+
+    IMFMediaSource* source = nullptr;
+
+    HRESULT hr = capture->devices[deviceIndex].activate->ActivateObject(
+        __uuidof(IMFMediaSource),
+        reinterpret_cast<void**>(&source)
+    );
+
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    IMFPresentationDescriptor* presentationDescriptor = nullptr;
+
+    hr = source->CreatePresentationDescriptor(
+        &presentationDescriptor
+    );
+
+    if (FAILED(hr))
+    {
+        source->Release();
+        return hr;
+    }
+
+    DWORD streamCount = 0;
+
+    hr = presentationDescriptor->GetStreamDescriptorCount(
+        &streamCount
+    );
+
+    if (FAILED(hr))
+    {
+        presentationDescriptor->Release();
+        source->Release();
+        return hr;
+    }
+
+    for (DWORD streamIndex = 0;
+         streamIndex < streamCount;
+         ++streamIndex)
+    {
+        BOOL selected = FALSE;
+
+        IMFStreamDescriptor* streamDescriptor = nullptr;
+
+        hr = presentationDescriptor->GetStreamDescriptorByIndex(
+            streamIndex,
+            &selected,
+            &streamDescriptor
+        );
+
+        if (FAILED(hr))
+        {
+            continue;
+        }
+
+        IMFMediaTypeHandler* handler = nullptr;
+
+        hr = streamDescriptor->GetMediaTypeHandler(
+            &handler
+        );
+
+        if (FAILED(hr))
+        {
+            streamDescriptor->Release();
+            continue;
+        }
+
+        GUID majorType{};
+
+        hr = handler->GetMajorType(
+            &majorType
+        );
+
+        if (FAILED(hr))
+        {
+            handler->Release();
+            streamDescriptor->Release();
+            continue;
+        }
+
+        if (majorType != MFMediaType_Video)
+        {
+            handler->Release();
+            streamDescriptor->Release();
+            continue;
+        }
+
+        DWORD typeCount = 0;
+
+        hr = handler->GetMediaTypeCount(
+            &typeCount
+        );
+
+        if (SUCCEEDED(hr))
+        {
+            for (DWORD typeIndex = 0;
+                 typeIndex < typeCount;
+                 ++typeIndex)
+            {
+                IMFMediaType* mediaType = nullptr;
+
+                hr = handler->GetMediaTypeByIndex(
+                    typeIndex,
+                    &mediaType
+                );
+
+                if (FAILED(hr))
+                {
+                    continue;
+                }
+
+                CaptureFormatInfo format;
+
+                if (SUCCEEDED(
+                    GetFormat(
+                        mediaType,
+                        format
+                    )
+                ))
+                {
+                    formats.push_back(
+                        std::move(format)
+                    );
+                }
+
+                mediaType->Release();
+            }
+        }
+
+        handler->Release();
+        streamDescriptor->Release();
+    }
+
+    presentationDescriptor->Release();
+    source->Release();
 
     return S_OK;
 }
@@ -272,6 +525,105 @@ VIEWFINDER_API int32_t ViewfinderCaptureGetDevice(
     wcsncpy_s(
         outDevice->name,
         device.name.c_str(),
+        _TRUNCATE
+    );
+
+    return S_OK;
+}
+
+VIEWFINDER_API int32_t ViewfinderCaptureGetFormatCount(
+    ViewfinderCapture* capture,
+    uint32_t deviceIndex,
+    uint32_t* outCount
+)
+{
+    if (!capture || !outCount)
+    {
+        return E_INVALIDARG;
+    }
+
+    if (!capture->initialized)
+    {
+        return MF_E_NOT_INITIALIZED;
+    }
+
+    std::vector<CaptureFormatInfo> formats;
+
+    HRESULT hr = EnumerateFormats(
+        capture,
+        deviceIndex,
+        formats
+    );
+
+    if (FAILED(hr))
+    {
+        return static_cast<int32_t>(hr);
+    }
+
+    *outCount = static_cast<uint32_t>(
+        formats.size()
+    );
+
+    return S_OK;
+}
+
+VIEWFINDER_API int32_t ViewfinderCaptureGetFormat(
+    ViewfinderCapture* capture,
+    uint32_t deviceIndex,
+    uint32_t formatIndex,
+    ViewfinderCaptureFormat* outFormat
+)
+{
+    if (!capture || !outFormat)
+    {
+        return E_INVALIDARG;
+    }
+
+    if (!capture->initialized)
+    {
+        return MF_E_NOT_INITIALIZED;
+    }
+
+    std::vector<CaptureFormatInfo> formats;
+
+    HRESULT hr = EnumerateFormats(
+        capture,
+        deviceIndex,
+        formats
+    );
+
+    if (FAILED(hr))
+    {
+        return static_cast<int32_t>(hr);
+    }
+
+    if (formatIndex >= formats.size())
+    {
+        return MF_E_NOT_FOUND;
+    }
+
+    const auto& format =
+        formats[formatIndex];
+
+    ZeroMemory(
+        outFormat,
+        sizeof(ViewfinderCaptureFormat)
+    );
+
+    outFormat->index = formatIndex;
+
+    outFormat->width = format.width;
+    outFormat->height = format.height;
+
+    outFormat->fpsNumerator =
+        format.fpsNumerator;
+
+    outFormat->fpsDenominator =
+        format.fpsDenominator;
+
+    wcsncpy_s(
+        outFormat->subtype,
+        format.subtype.c_str(),
         _TRUNCATE
     );
 
