@@ -73,6 +73,13 @@ func (s *InputSession) Motion(action string, x, y int) error {
 	return s.command(s.displayID, "motionevent", action, strconv.Itoa(x), strconv.Itoa(y))
 }
 
+func (s *InputSession) KeyEvent(key string) error {
+	if key == "" {
+		return fmt.Errorf("key name is empty")
+	}
+	return s.command(s.displayID, "keyevent", key)
+}
+
 func (s *InputSession) Close() error {
 	s.mu.Lock()
 	if s.stdin == nil {

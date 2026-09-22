@@ -361,6 +361,7 @@ func main() {
 	mouseWasDown := false
 	mouseStartX, mouseStartY := 0, 0
 	lastMotionX, lastMotionY := 0, 0
+	keyWasDown := map[int]bool{}
 	lastTitle := time.Now()
 	framesReceived := 0
 
@@ -404,6 +405,23 @@ func main() {
 			}
 		}
 		fillKeyWasDown = fillKeyDown
+		for _, key := range []struct {
+			vk      int
+			android string
+		}{
+			{win32.VK_RETURN, "KEYCODE_ENTER"},
+			{win32.VK_BACK, "KEYCODE_DEL"},
+			{win32.VK_ESCAPE, "KEYCODE_BACK"},
+			{win32.VK_SPACE, "KEYCODE_SPACE"},
+		} {
+			down := window.KeyDown(key.vk)
+			if down && !keyWasDown[key.vk] && androidReady && inputSession != nil {
+				if err := inputSession.KeyEvent(key.android); err != nil {
+					log.Printf("Android key failed: %v", err)
+				}
+			}
+			keyWasDown[key.vk] = down
+		}
 		mouseDown := window.KeyDown(win32.VK_LBUTTON)
 		if mouseDown && !mouseWasDown && androidReady {
 			if x, y, ok := window.CursorClient(); ok {

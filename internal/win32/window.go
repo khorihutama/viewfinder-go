@@ -24,6 +24,10 @@ const (
 	WM_QUIT          = 0x0012
 	WM_KEYDOWN       = 0x0100
 	VK_LBUTTON       = 0x01
+	VK_BACK          = 0x08
+	VK_RETURN        = 0x0D
+	VK_ESCAPE        = 0x1B
+	VK_SPACE         = 0x20
 	VK_F11           = 0x7A
 	GWL_STYLE        = -16
 	SWP_FRAMECHANGED = 0x0020
