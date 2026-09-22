@@ -379,12 +379,13 @@ func main() {
 			}
 		}
 
-		if err := renderer.Draw(); err != nil {
-			log.Fatalf("renderer draw failed: %v", err)
-		}
-
-		if err := renderer.Present(); err != nil {
-			log.Fatalf("renderer present failed: %v", err)
+		if current != nil {
+			if err := renderer.Draw(); err != nil {
+				log.Fatalf("renderer draw failed: %v", err)
+			}
+			if err := renderer.Present(); err != nil {
+				log.Fatalf("renderer present failed: %v", err)
+			}
 		}
 	}
 
