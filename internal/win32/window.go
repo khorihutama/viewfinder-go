@@ -23,6 +23,7 @@ const (
 	WM_CLOSE         = 0x0010
 	WM_QUIT          = 0x0012
 	WM_KEYDOWN       = 0x0100
+	VK_LBUTTON       = 0x01
 	VK_F11           = 0x7A
 	GWL_STYLE        = -16
 	SWP_FRAMECHANGED = 0x0020
@@ -96,6 +97,8 @@ var (
 	procSetWindowPos      = user32.NewProc("SetWindowPos")
 	procGetSystemMetrics  = user32.NewProc("GetSystemMetrics")
 	procGetAsyncKeyState  = user32.NewProc("GetAsyncKeyState")
+	procGetCursorPos      = user32.NewProc("GetCursorPos")
+	procScreenToClient    = user32.NewProc("ScreenToClient")
 
 	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
 
@@ -112,6 +115,17 @@ type Window struct {
 func (w *Window) KeyDown(key int) bool {
 	result, _, _ := procGetAsyncKeyState.Call(uintptr(key))
 	return int16(result) < 0
+}
+
+func (w *Window) CursorClient() (int32, int32, bool) {
+	var p point
+	if result, _, _ := procGetCursorPos.Call(uintptr(unsafe.Pointer(&p))); result == 0 {
+		return 0, 0, false
+	}
+	if result, _, _ := procScreenToClient.Call(w.HWND, uintptr(unsafe.Pointer(&p))); result == 0 {
+		return 0, 0, false
+	}
+	return p.X, p.Y, true
 }
 
 func (w *Window) ToggleFullscreen() error {

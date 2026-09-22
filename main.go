@@ -309,6 +309,7 @@ func main() {
 	var current *captureFrame
 	fillMode := false
 	fillKeyWasDown := false
+	mouseWasDown := false
 	lastTitle := time.Now()
 	framesReceived := 0
 
@@ -337,6 +338,18 @@ func main() {
 			}
 		}
 		fillKeyWasDown = fillKeyDown
+		mouseDown := window.KeyDown(win32.VK_LBUTTON)
+		if mouseDown && !mouseWasDown && current != nil {
+			if x, y, ok := window.CursorClient(); ok {
+				clientWidth, clientHeight, _ := window.ClientSize()
+				if x >= 0 && y >= 0 && uint32(x) < clientWidth && uint32(y) < clientHeight {
+					deviceX := int(uint32(x) * current.width / clientWidth)
+					deviceY := int(uint32(y) * current.height / clientHeight)
+					log.Printf("Touch mapping pending: %d,%d", deviceX, deviceY)
+				}
+			}
+		}
+		mouseWasDown = mouseDown
 
 		clientWidth, clientHeight, err := window.ClientSize()
 		if err != nil {
