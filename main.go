@@ -23,6 +23,7 @@ type captureFrame struct {
 func readFrames(capture *native.Capture, buffers chan []byte, frames chan captureFrame, done <-chan struct{}, stopped chan<- struct{}) {
 	defer close(stopped)
 	defer capture.Close()
+	lastReadError := time.Time{}
 	returnBuffer := func(buffer []byte) bool {
 		select {
 		case buffers <- buffer:
@@ -42,12 +43,21 @@ func readFrames(capture *native.Capture, buffers chan []byte, frames chan captur
 			}
 			data, width, height, stride, err := capture.ReadFrame(buffer)
 			if err != nil {
-				log.Printf("ReadFrame failed: %v", err)
+				if lastReadError.IsZero() || time.Since(lastReadError) >= time.Second {
+					log.Printf("ReadFrame failed: %v", err)
+					lastReadError = time.Now()
+				}
 				if !returnBuffer(buffer) {
 					return
 				}
+				select {
+				case <-done:
+					return
+				case <-time.After(25 * time.Millisecond):
+				}
 				continue
 			}
+			lastReadError = time.Time{}
 
 			if data == 0 {
 				if !returnBuffer(buffer) {
@@ -92,6 +102,13 @@ func main() {
 		if len(devices) == 0 {
 			log.Println("No Android devices connected")
 		} else if device, ok := android.FirstReady(devices); ok {
+			if displayID, resolveErr := android.ResolveDisplayID(device); resolveErr == nil {
+				device.Display = displayID
+				log.Printf("Android external display: %d", displayID)
+			} else {
+				log.Printf("Android external display detection failed: %v", resolveErr)
+				device.Display = -1
+			}
 			androidDevice = device
 			androidReady = true
 			if _, err := device.Shell("echo", "viewfinder-connected"); err != nil {
@@ -326,6 +343,13 @@ func main() {
 		select {
 		case devices := <-androidChanges:
 			if device, ok := android.FirstReady(devices); ok {
+				if displayID, resolveErr := android.ResolveDisplayID(device); resolveErr == nil {
+					device.Display = displayID
+					log.Printf("Android external display: %d", displayID)
+				} else {
+					device.Display = -1
+					log.Printf("Android external display detection failed: %v", resolveErr)
+				}
 				androidDevice = device
 				androidReady = true
 				log.Printf("Android device ready: %s", device.Serial)
@@ -344,12 +368,12 @@ func main() {
 		}
 		fillKeyWasDown = fillKeyDown
 		mouseDown := window.KeyDown(win32.VK_LBUTTON)
-		if mouseDown && !mouseWasDown && current != nil {
+		if mouseDown && !mouseWasDown && androidReady {
 			if x, y, ok := window.CursorClient(); ok {
 				clientWidth, clientHeight, _ := window.ClientSize()
 				if x >= 0 && y >= 0 && uint32(x) < clientWidth && uint32(y) < clientHeight {
-					videoWidth := float64(current.width)
-					videoHeight := float64(current.height)
+					videoWidth := float64(selectedFormat.Width)
+					videoHeight := float64(selectedFormat.Height)
 					windowWidth := float64(clientWidth)
 					windowHeight := float64(clientHeight)
 					videoAspect := videoWidth / videoHeight
@@ -367,10 +391,9 @@ func main() {
 					if float64(x) >= offsetX && float64(y) >= offsetY && float64(x) < offsetX+viewportWidth && float64(y) < offsetY+viewportHeight {
 						deviceX := int((float64(x) - offsetX) * videoWidth / viewportWidth)
 						deviceY := int((float64(y) - offsetY) * videoHeight / viewportHeight)
-						if androidReady {
-							if err := androidDevice.Tap(deviceX, deviceY); err != nil {
-								log.Printf("Android tap failed: %v", err)
-							}
+						log.Printf("Android tap: display=%d x=%d y=%d", androidDevice.Display, deviceX, deviceY)
+						if err := androidDevice.Tap(deviceX, deviceY); err != nil {
+							log.Printf("Android tap failed: %v", err)
 						}
 					}
 				}
