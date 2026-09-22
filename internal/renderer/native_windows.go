@@ -26,6 +26,10 @@ var (
 		"ViewfinderRendererPresent",
 	)
 
+	procRendererResize = dll.NewProc(
+		"ViewfinderRendererResize",
+	)
+
 	procRendererDestroy = dll.NewProc(
 		"ViewfinderRendererDestroy",
 	)
@@ -95,6 +99,19 @@ func Present() error {
 			"ViewfinderRendererPresent failed: 0x%08X",
 			uint32(result),
 		)
+	}
+
+	return nil
+}
+
+func Resize(width, height uint32) error {
+	if width == 0 || height == 0 {
+		return nil
+	}
+
+	result, _, _ := procRendererResize.Call(uintptr(width), uintptr(height))
+	if int32(result) < 0 {
+		return fmt.Errorf("ViewfinderRendererResize failed: 0x%08X", uint32(result))
 	}
 
 	return nil

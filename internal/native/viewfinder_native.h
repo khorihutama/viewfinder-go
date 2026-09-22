@@ -45,6 +45,11 @@ VIEWFINDER_API int32_t ViewfinderRendererClear(
 
 VIEWFINDER_API int32_t ViewfinderRendererPresent();
 
+VIEWFINDER_API int32_t ViewfinderRendererResize(
+    uint32_t width,
+    uint32_t height
+);
+
 VIEWFINDER_API void ViewfinderRendererDestroy();
 
 VIEWFINDER_API int32_t ViewfinderRendererDraw();

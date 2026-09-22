@@ -30,6 +30,13 @@ type point struct {
 	Y int32
 }
 
+type rect struct {
+	Left   int32
+	Top    int32
+	Right  int32
+	Bottom int32
+}
+
 type msg struct {
 	Hwnd    uintptr
 	Message uint32
@@ -72,6 +79,7 @@ var (
 	procPostQuitMessage  = user32.NewProc("PostQuitMessage")
 
 	procDestroyWindow = user32.NewProc("DestroyWindow")
+	procGetClientRect = user32.NewProc("GetClientRect")
 
 	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
 
@@ -207,6 +215,22 @@ func (w *Window) Pump() (bool, error) {
 			uintptr(unsafe.Pointer(&message)),
 		)
 	}
+}
+
+func (w *Window) ClientSize() (uint32, uint32, error) {
+	var client rect
+
+	result, _, err := procGetClientRect.Call(
+		w.HWND,
+		uintptr(unsafe.Pointer(&client)),
+	)
+	if result == 0 {
+		return 0, 0, fmt.Errorf("GetClientRect failed: %w", err)
+	}
+
+	return uint32(client.Right - client.Left),
+		uint32(client.Bottom - client.Top),
+		nil
 }
 
 // Run provides a traditional blocking Windows message loop.

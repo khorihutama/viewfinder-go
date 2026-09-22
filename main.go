@@ -207,12 +207,29 @@ func main() {
 			4
 
 	buffer := make([]byte, bufferSize)
+	renderWidth := uint32(1280)
+	renderHeight := uint32(720)
 
 	for running := true; running; {
 		var pumpErr error
 		running, pumpErr = window.Pump()
 		if pumpErr != nil {
 			log.Fatalf("window message loop failed: %v", pumpErr)
+		}
+
+		clientWidth, clientHeight, err := window.ClientSize()
+		if err != nil {
+			log.Fatalf("failed to read window size: %v", err)
+		}
+
+		if clientWidth != 0 && clientHeight != 0 &&
+			(clientWidth != renderWidth || clientHeight != renderHeight) {
+			if err := renderer.Resize(clientWidth, clientHeight); err != nil {
+				log.Fatalf("renderer resize failed: %v", err)
+			}
+
+			renderWidth = clientWidth
+			renderHeight = clientHeight
 		}
 
 		dataSize,

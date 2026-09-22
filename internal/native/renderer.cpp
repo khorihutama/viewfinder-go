@@ -26,6 +26,65 @@ static ID3D11VertexShader* g_vertexShader = nullptr;
 static ID3D11PixelShader* g_pixelShader = nullptr;
 
 static ID3D11SamplerState* g_sampler = nullptr;
+static uint32_t g_backBufferWidth = 0;
+static uint32_t g_backBufferHeight = 0;
+static uint32_t g_videoWidth = 0;
+static uint32_t g_videoHeight = 0;
+
+static void SetViewport()
+{
+    if (!g_context || !g_backBufferWidth || !g_backBufferHeight)
+    {
+        return;
+    }
+
+    float width = static_cast<float>(g_backBufferWidth);
+    float height = static_cast<float>(g_backBufferHeight);
+
+    if (g_videoWidth && g_videoHeight)
+    {
+        const float videoAspect =
+            static_cast<float>(g_videoWidth) / g_videoHeight;
+        const float windowAspect = width / height;
+
+        if (videoAspect > windowAspect)
+        {
+            height = width / videoAspect;
+        }
+        else
+        {
+            width = height * videoAspect;
+        }
+    }
+
+    D3D11_VIEWPORT viewport{};
+    viewport.TopLeftX = (g_backBufferWidth - width) / 2.0f;
+    viewport.TopLeftY = (g_backBufferHeight - height) / 2.0f;
+    viewport.Width = width;
+    viewport.Height = height;
+    viewport.MinDepth = 0.0f;
+    viewport.MaxDepth = 1.0f;
+    g_context->RSSetViewports(1, &viewport);
+}
+
+static HRESULT CreateRenderTarget()
+{
+    ID3D11Texture2D* backBuffer = nullptr;
+    HRESULT hr = g_swapChain->GetBuffer(
+        0,
+        __uuidof(ID3D11Texture2D),
+        reinterpret_cast<void**>(&backBuffer)
+    );
+
+    if (FAILED(hr))
+    {
+        return hr;
+    }
+
+    hr = g_device->CreateRenderTargetView(backBuffer, nullptr, &g_renderTarget);
+    backBuffer->Release();
+    return hr;
+}
 
 static HRESULT CompileShader(
     const wchar_t* path,
@@ -143,6 +202,11 @@ static HRESULT CreateShaders()
 
 static void ReleaseRenderer()
 {
+    g_backBufferWidth = 0;
+    g_backBufferHeight = 0;
+    g_videoWidth = 0;
+    g_videoHeight = 0;
+
     if (g_renderTarget)
     {
         g_renderTarget->Release();
@@ -273,28 +337,7 @@ VIEWFINDER_API int32_t ViewfinderRendererInitialize(
         return static_cast<int32_t>(hr);
     }
 
-    ID3D11Texture2D* backBuffer = nullptr;
-
-    hr = g_swapChain->GetBuffer(
-        0,
-        __uuidof(ID3D11Texture2D),
-        reinterpret_cast<void**>(&backBuffer)
-    );
-
-    if (FAILED(hr))
-    {
-        ReleaseRenderer();
-
-        return static_cast<int32_t>(hr);
-    }
-
-    hr = g_device->CreateRenderTargetView(
-        backBuffer,
-        nullptr,
-        &g_renderTarget
-    );
-
-    backBuffer->Release();
+    hr = CreateRenderTarget();
 
     if (FAILED(hr))
     {
@@ -309,24 +352,9 @@ VIEWFINDER_API int32_t ViewfinderRendererInitialize(
         nullptr
     );
 
-    D3D11_VIEWPORT viewport{};
-
-    viewport.TopLeftX = 0.0f;
-    viewport.TopLeftY = 0.0f;
-
-    viewport.Width =
-        static_cast<float>(width);
-
-    viewport.Height =
-        static_cast<float>(height);
-
-    viewport.MinDepth = 0.0f;
-    viewport.MaxDepth = 1.0f;
-
-    g_context->RSSetViewports(
-        1,
-        &viewport
-    );
+    g_backBufferWidth = width;
+    g_backBufferHeight = height;
+    SetViewport();
 
     hr = CreateShaders();
     if (FAILED(hr))
@@ -379,6 +407,45 @@ VIEWFINDER_API int32_t ViewfinderRendererPresent()
     );
 
     return static_cast<int32_t>(hr);
+}
+
+VIEWFINDER_API int32_t ViewfinderRendererResize(
+    uint32_t width,
+    uint32_t height
+)
+{
+    if (!g_device || !g_context || !g_swapChain || !g_renderTarget ||
+        !width || !height)
+    {
+        return E_INVALIDARG;
+    }
+
+    g_context->OMSetRenderTargets(0, nullptr, nullptr);
+    g_renderTarget->Release();
+    g_renderTarget = nullptr;
+
+    HRESULT hr = g_swapChain->ResizeBuffers(
+        0,
+        width,
+        height,
+        DXGI_FORMAT_UNKNOWN,
+        0
+    );
+    if (FAILED(hr))
+    {
+        return static_cast<int32_t>(hr);
+    }
+
+    hr = CreateRenderTarget();
+    if (FAILED(hr))
+    {
+        return static_cast<int32_t>(hr);
+    }
+
+    g_backBufferWidth = width;
+    g_backBufferHeight = height;
+    SetViewport();
+    return S_OK;
 }
 
 VIEWFINDER_API void ViewfinderRendererDestroy()
@@ -588,6 +655,9 @@ VIEWFINDER_API int32_t ViewfinderRendererUploadNV12(
 
         textureWidth = width;
         textureHeight = height;
+        g_videoWidth = width;
+        g_videoHeight = height;
+        SetViewport();
     }
 
     // ---------------------------------------------------------
