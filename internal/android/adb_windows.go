@@ -6,7 +6,9 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -80,7 +82,14 @@ func (d Device) Shell(args ...string) ([]byte, error) {
 }
 
 func (d Device) Tap(x, y int) error {
-	return d.TapDisplay(7, x, y)
+	return d.TapDisplay(DisplayID(), x, y)
+}
+
+func DisplayID() int {
+	if value, err := strconv.Atoi(os.Getenv("VIEWFINDER_ANDROID_DISPLAY_ID")); err == nil && value >= 0 {
+		return value
+	}
+	return 7
 }
 
 func (d Device) TapDisplay(displayID, x, y int) error {
@@ -91,6 +100,22 @@ func (d Device) TapDisplay(displayID, x, y int) error {
 		return fmt.Errorf("tap coordinates must be non-negative")
 	}
 	_, err := d.Shell("input", "-d", fmt.Sprint(displayID), "tap", fmt.Sprint(x), fmt.Sprint(y))
+	return err
+}
+
+func (d Device) Swipe(x1, y1, x2, y2, durationMS int) error {
+	if x1 < 0 || y1 < 0 || x2 < 0 || y2 < 0 || durationMS < 0 {
+		return fmt.Errorf("swipe coordinates and duration must be non-negative")
+	}
+	_, err := d.Shell("input", "-d", fmt.Sprint(DisplayID()), "swipe", fmt.Sprint(x1), fmt.Sprint(y1), fmt.Sprint(x2), fmt.Sprint(y2), fmt.Sprint(durationMS))
+	return err
+}
+
+func (d Device) Scroll(x, y, delta int) error {
+	if x < 0 || y < 0 {
+		return fmt.Errorf("scroll coordinates must be non-negative")
+	}
+	_, err := d.Shell("input", "-d", fmt.Sprint(DisplayID()), "swipe", fmt.Sprint(x), fmt.Sprint(y), fmt.Sprint(x), fmt.Sprint(y-delta), "300")
 	return err
 }
 
