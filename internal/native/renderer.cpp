@@ -366,34 +366,6 @@ VIEWFINDER_API int32_t ViewfinderRendererInitialize(
     return S_OK;
 }
 
-VIEWFINDER_API int32_t ViewfinderRendererClear(
-    float red,
-    float green,
-    float blue,
-    float alpha
-)
-{
-    if (!g_context || !g_renderTarget)
-    {
-        return E_FAIL;
-    }
-
-    float color[4] =
-    {
-        red,
-        green,
-        blue,
-        alpha
-    };
-
-    g_context->ClearRenderTargetView(
-        g_renderTarget,
-        color
-    );
-
-    return S_OK;
-}
-
 VIEWFINDER_API int32_t ViewfinderRendererPresent()
 {
     if (!g_swapChain)
@@ -753,8 +725,10 @@ VIEWFINDER_API int32_t ViewfinderRendererDraw()
     }
 
     ID3D11ShaderResourceView* views[] = {g_yView, g_uvView};
+    const float black[] = {0.0f, 0.0f, 0.0f, 1.0f};
 
     g_context->OMSetRenderTargets(1, &g_renderTarget, nullptr);
+    g_context->ClearRenderTargetView(g_renderTarget, black);
     g_context->IASetInputLayout(nullptr);
     g_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
     g_context->VSSetShader(g_vertexShader, nullptr, 0);
