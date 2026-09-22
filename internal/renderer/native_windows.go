@@ -10,7 +10,7 @@ import (
 )
 
 var dll = windows.NewLazyDLL(
-	"build\\viewfinder_native.dll",
+	"viewfinder_native.dll",
 )
 
 var (
