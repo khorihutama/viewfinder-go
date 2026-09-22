@@ -422,6 +422,24 @@ func main() {
 			}
 			keyWasDown[key.vk] = down
 		}
+		for key := 'A'; key <= 'Z'; key++ {
+			down := window.KeyDown(int(key))
+			if down && !keyWasDown[int(key)] && androidReady && inputSession != nil {
+				if err := inputSession.KeyEvent("KEYCODE_" + string(key)); err != nil {
+					log.Printf("Android key failed: %v", err)
+				}
+			}
+			keyWasDown[int(key)] = down
+		}
+		for key := '0'; key <= '9'; key++ {
+			down := window.KeyDown(int(key))
+			if down && !keyWasDown[int(key)] && androidReady && inputSession != nil {
+				if err := inputSession.KeyEvent("KEYCODE_" + string(key)); err != nil {
+					log.Printf("Android key failed: %v", err)
+				}
+			}
+			keyWasDown[int(key)] = down
+		}
 		mouseDown := window.KeyDown(win32.VK_LBUTTON)
 		if mouseDown && !mouseWasDown && androidReady {
 			if x, y, ok := window.CursorClient(); ok {
