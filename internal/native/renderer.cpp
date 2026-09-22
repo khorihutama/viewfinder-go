@@ -5,6 +5,8 @@
 #include <d3dcompiler.h>
 #include <dxgi.h>
 
+#include <string>
+
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
 #pragma comment(lib, "d3dcompiler.lib")
@@ -43,6 +45,31 @@ static HRESULT CompileShader(
         outBlob,
         &errors
     );
+
+    if (hr == HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND) ||
+        hr == HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND))
+    {
+        if (errors)
+        {
+            errors->Release();
+            errors = nullptr;
+        }
+
+        std::wstring fallbackPath = L"..\\";
+        fallbackPath += path;
+
+        hr = D3DCompileFromFile(
+            fallbackPath.c_str(),
+            nullptr,
+            D3D_COMPILE_STANDARD_FILE_INCLUDE,
+            "main",
+            profile,
+            0,
+            0,
+            outBlob,
+            &errors
+        );
+    }
 
     if (errors)
     {
