@@ -79,6 +79,14 @@ func (d Device) Shell(args ...string) ([]byte, error) {
 	return output, nil
 }
 
+func (d Device) Tap(x, y int) error {
+	if x < 0 || y < 0 {
+		return fmt.Errorf("tap coordinates must be non-negative")
+	}
+	_, err := d.Shell("input", "tap", fmt.Sprint(x), fmt.Sprint(y))
+	return err
+}
+
 func FirstReady(devices []Device) (Device, bool) {
 	for _, device := range devices {
 		if device.State == "device" {
