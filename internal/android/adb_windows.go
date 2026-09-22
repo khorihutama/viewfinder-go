@@ -6,10 +6,12 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -17,6 +19,64 @@ type Device struct {
 	Serial  string
 	State   string
 	Display int
+}
+
+type InputSession struct {
+	cmd       *exec.Cmd
+	stdin     io.WriteCloser
+	displayID int
+	mu        sync.Mutex
+}
+
+func (d Device) StartInput() (*InputSession, error) {
+	displayID, err := d.targetDisplay()
+	if err != nil {
+		return nil, err
+	}
+	cmd := exec.Command("adb", "-s", d.Serial, "shell")
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, err
+	}
+	cmd.Stdout = io.Discard
+	cmd.Stderr = io.Discard
+	if err := cmd.Start(); err != nil {
+		stdin.Close()
+		return nil, fmt.Errorf("start adb input session: %w", err)
+	}
+	return &InputSession{cmd: cmd, stdin: stdin, displayID: displayID}, nil
+}
+
+func (s *InputSession) command(displayID int, args ...string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stdin == nil {
+		return fmt.Errorf("input session is closed")
+	}
+	line := "input -d " + strconv.Itoa(displayID) + " " + strings.Join(args, " ") + "\n"
+	_, err := io.WriteString(s.stdin, line)
+	return err
+}
+
+func (s *InputSession) Tap(x, y int) error {
+	return s.command(s.displayID, "tap", strconv.Itoa(x), strconv.Itoa(y))
+}
+
+func (s *InputSession) Swipe(x1, y1, x2, y2, durationMS int) error {
+	return s.command(s.displayID, "swipe", strconv.Itoa(x1), strconv.Itoa(y1), strconv.Itoa(x2), strconv.Itoa(y2), strconv.Itoa(durationMS))
+}
+
+func (s *InputSession) Close() error {
+	s.mu.Lock()
+	if s.stdin == nil {
+		s.mu.Unlock()
+		return nil
+	}
+	stdin := s.stdin
+	s.stdin = nil
+	s.mu.Unlock()
+	stdin.Close()
+	return s.cmd.Wait()
 }
 
 func ResolveDisplayID(d Device) (int, error) {

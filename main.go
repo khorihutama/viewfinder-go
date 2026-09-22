@@ -12,12 +12,40 @@ import (
 	"github.com/khorihutama/viewfinder-go/internal/win32"
 )
 
+func abs(value int) int {
+	if value < 0 {
+		return -value
+	}
+	return value
+}
+
 type captureFrame struct {
 	buffer []byte
 	data   uint32
 	width  uint32
 	height uint32
 	stride uint32
+}
+
+func mapClientToVideo(x, y int32, clientWidth, clientHeight, videoWidth, videoHeight uint32, fill bool) (int, int, bool) {
+	if x < 0 || y < 0 || uint32(x) >= clientWidth || uint32(y) >= clientHeight {
+		return 0, 0, false
+	}
+	windowWidth, windowHeight := float64(clientWidth), float64(clientHeight)
+	videoAspect := float64(videoWidth) / float64(videoHeight)
+	viewportWidth, viewportHeight := windowWidth, windowHeight
+	if !fill {
+		if videoAspect > windowWidth/windowHeight {
+			viewportHeight = viewportWidth / videoAspect
+		} else {
+			viewportWidth = viewportHeight * videoAspect
+		}
+	}
+	offsetX, offsetY := (windowWidth-viewportWidth)/2, (windowHeight-viewportHeight)/2
+	if float64(x) < offsetX || float64(y) < offsetY || float64(x) >= offsetX+viewportWidth || float64(y) >= offsetY+viewportHeight {
+		return 0, 0, false
+	}
+	return int((float64(x) - offsetX) * float64(videoWidth) / viewportWidth), int((float64(y) - offsetY) * float64(videoHeight) / viewportHeight), true
 }
 
 func readFrames(capture *native.Capture, buffers chan []byte, frames chan captureFrame, done <-chan struct{}, stopped chan<- struct{}) {
@@ -91,8 +119,8 @@ func main() {
 	runtime.LockOSThread()
 
 	log.Println("Starting Viewfinder Go")
-	var androidDevice android.Device
 	androidReady := false
+	var inputSession *android.InputSession
 	if devices, err := android.Devices(); err != nil {
 		log.Printf("ADB unavailable: %v", err)
 	} else {
@@ -109,8 +137,8 @@ func main() {
 				log.Printf("Android external display detection failed: %v", resolveErr)
 				device.Display = -1
 			}
-			androidDevice = device
 			androidReady = true
+			inputSession, _ = device.StartInput()
 			if _, err := device.Shell("echo", "viewfinder-connected"); err != nil {
 				log.Printf("ADB device command failed: %v", err)
 			} else {
@@ -331,6 +359,7 @@ func main() {
 	fillMode := false
 	fillKeyWasDown := false
 	mouseWasDown := false
+	mouseStartX, mouseStartY := 0, 0
 	lastTitle := time.Now()
 	framesReceived := 0
 
@@ -350,11 +379,18 @@ func main() {
 					device.Display = -1
 					log.Printf("Android external display detection failed: %v", resolveErr)
 				}
-				androidDevice = device
 				androidReady = true
+				if inputSession != nil {
+					_ = inputSession.Close()
+				}
+				inputSession, _ = device.StartInput()
 				log.Printf("Android device ready: %s", device.Serial)
 			} else {
 				androidReady = false
+				if inputSession != nil {
+					_ = inputSession.Close()
+					inputSession = nil
+				}
 				log.Println("Android device disconnected")
 			}
 		default:
@@ -371,29 +407,28 @@ func main() {
 		if mouseDown && !mouseWasDown && androidReady {
 			if x, y, ok := window.CursorClient(); ok {
 				clientWidth, clientHeight, _ := window.ClientSize()
-				if x >= 0 && y >= 0 && uint32(x) < clientWidth && uint32(y) < clientHeight {
-					videoWidth := float64(selectedFormat.Width)
-					videoHeight := float64(selectedFormat.Height)
-					windowWidth := float64(clientWidth)
-					windowHeight := float64(clientHeight)
-					videoAspect := videoWidth / videoHeight
-					windowAspect := windowWidth / windowHeight
-					viewportWidth, viewportHeight := windowWidth, windowHeight
-					if !fillMode {
-						if videoAspect > windowAspect {
-							viewportHeight = viewportWidth / videoAspect
-						} else {
-							viewportWidth = viewportHeight * videoAspect
+				if _, _, ok := mapClientToVideo(x, y, clientWidth, clientHeight, selectedFormat.Width, selectedFormat.Height, fillMode); ok {
+					mouseStartX, mouseStartY = int(x), int(y)
+				}
+			}
+		}
+		if !mouseDown && mouseWasDown && androidReady {
+			if x, y, ok := window.CursorClient(); ok {
+				clientWidth, clientHeight, _ := window.ClientSize()
+				x1, y1, startOK := mapClientToVideo(int32(mouseStartX), int32(mouseStartY), clientWidth, clientHeight, selectedFormat.Width, selectedFormat.Height, fillMode)
+				x2, y2, endOK := mapClientToVideo(x, y, clientWidth, clientHeight, selectedFormat.Width, selectedFormat.Height, fillMode)
+				if startOK && endOK {
+					if abs(x2-x1)+abs(y2-y1) < 8 {
+						if inputSession != nil {
+							if err := inputSession.Tap(x2, y2); err != nil {
+								log.Printf("Android tap failed: %v", err)
+							}
 						}
-					}
-					offsetX := (windowWidth - viewportWidth) / 2
-					offsetY := (windowHeight - viewportHeight) / 2
-					if float64(x) >= offsetX && float64(y) >= offsetY && float64(x) < offsetX+viewportWidth && float64(y) < offsetY+viewportHeight {
-						deviceX := int((float64(x) - offsetX) * videoWidth / viewportWidth)
-						deviceY := int((float64(y) - offsetY) * videoHeight / viewportHeight)
-						log.Printf("Android tap: display=%d x=%d y=%d", androidDevice.Display, deviceX, deviceY)
-						if err := androidDevice.Tap(deviceX, deviceY); err != nil {
-							log.Printf("Android tap failed: %v", err)
+					} else {
+						if inputSession != nil {
+							if err := inputSession.Swipe(x1, y1, x2, y2, 120); err != nil {
+								log.Printf("Android swipe failed: %v", err)
+							}
 						}
 					}
 				}
@@ -453,6 +488,9 @@ func main() {
 	}
 
 	close(done)
+	if inputSession != nil {
+		_ = inputSession.Close()
+	}
 	<-stopped
 	if current != nil {
 		buffers <- current.buffer
