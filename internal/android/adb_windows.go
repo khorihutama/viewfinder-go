@@ -150,11 +150,26 @@ func (d Device) TapDisplay(displayID, x, y int) error {
 	return err
 }
 
+func (d Device) targetDisplay() (int, error) {
+	if d.Display > 0 {
+		return d.Display, nil
+	}
+	displayID := DisplayID()
+	if displayID <= 0 {
+		return 0, fmt.Errorf("external display ID is not configured")
+	}
+	return displayID, nil
+}
+
 func (d Device) Swipe(x1, y1, x2, y2, durationMS int) error {
 	if x1 < 0 || y1 < 0 || x2 < 0 || y2 < 0 || durationMS < 0 {
 		return fmt.Errorf("swipe coordinates and duration must be non-negative")
 	}
-	_, err := d.Shell("input", "-d", fmt.Sprint(DisplayID()), "swipe", fmt.Sprint(x1), fmt.Sprint(y1), fmt.Sprint(x2), fmt.Sprint(y2), fmt.Sprint(durationMS))
+	displayID, err := d.targetDisplay()
+	if err != nil {
+		return err
+	}
+	_, err = d.Shell("input", "-d", fmt.Sprint(displayID), "swipe", fmt.Sprint(x1), fmt.Sprint(y1), fmt.Sprint(x2), fmt.Sprint(y2), fmt.Sprint(durationMS))
 	return err
 }
 
@@ -162,7 +177,11 @@ func (d Device) Scroll(x, y, delta int) error {
 	if x < 0 || y < 0 {
 		return fmt.Errorf("scroll coordinates must be non-negative")
 	}
-	_, err := d.Shell("input", "-d", fmt.Sprint(DisplayID()), "swipe", fmt.Sprint(x), fmt.Sprint(y), fmt.Sprint(x), fmt.Sprint(y-delta), "300")
+	displayID, err := d.targetDisplay()
+	if err != nil {
+		return err
+	}
+	_, err = d.Shell("input", "-d", fmt.Sprint(displayID), "swipe", fmt.Sprint(x), fmt.Sprint(y), fmt.Sprint(x), fmt.Sprint(y-delta), "300")
 	return err
 }
 
