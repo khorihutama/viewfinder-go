@@ -49,30 +49,6 @@ func main() {
 	defer renderer.DestroyWindowRenderer()
 
 	// ------------------------------------------------------------
-	// Initialize D3D11
-	// ------------------------------------------------------------
-
-	d3d, err := renderer.Initialize()
-
-	if err != nil {
-		log.Fatalf(
-			"failed to initialize D3D11: %v",
-			err,
-		)
-	}
-
-	log.Printf(
-		"D3D11 device initialized: pointer=0x%X feature_level=0x%X",
-		d3d.DevicePointer(),
-		d3d.FeatureLevel(),
-	)
-
-	log.Printf(
-		"D3D11 context initialized: pointer=0x%X",
-		d3d.ContextPointer(),
-	)
-
-	// ------------------------------------------------------------
 	// Initialize capture
 	// ------------------------------------------------------------
 
@@ -232,7 +208,13 @@ func main() {
 
 	buffer := make([]byte, bufferSize)
 
-	for i := 0; i < 10; i++ {
+	for running := true; running; {
+		var pumpErr error
+		running, pumpErr = window.Pump()
+		if pumpErr != nil {
+			log.Fatalf("window message loop failed: %v", pumpErr)
+		}
+
 		dataSize,
 			width,
 			height,
@@ -242,51 +224,35 @@ func main() {
 		)
 
 		if err != nil {
-			log.Printf(
-				"ReadFrame %d failed: %v",
-				i,
-				err,
-			)
+			log.Printf("ReadFrame failed: %v", err)
 
 			continue
 		}
 
-		log.Printf(
-			"Frame %d: %dx%d | data=%d bytes | stride=%d",
-			i,
+		if dataSize == 0 {
+			continue
+		}
+
+		err = renderer.UploadNV12(
+			buffer[:dataSize],
 			width,
 			height,
-			dataSize,
 			stride,
 		)
-	}
 
-	log.Println("Frame test completed")
-
-	go func() {
-		for {
-			if err := renderer.Clear(
-				0.1,
-				0.1,
-				0.1,
-				1.0,
-			); err != nil {
-				log.Printf("renderer clear failed: %v", err)
-				return
-			}
-
-			if err := renderer.Present(); err != nil {
-				log.Printf("renderer present failed: %v", err)
-				return
-			}
+		if err != nil {
+			log.Fatalf(
+				"NV12 upload failed: %v",
+				err,
+			)
 		}
-	}()
 
-	// ------------------------------------------------------------
-	// Keep window alive
-	// ------------------------------------------------------------
+		if err := renderer.Draw(); err != nil {
+			log.Fatalf("renderer draw failed: %v", err)
+		}
 
-	if err := window.Run(); err != nil {
-		log.Fatalf("window message loop failed: %v", err)
+		if err := renderer.Present(); err != nil {
+			log.Fatalf("renderer present failed: %v", err)
+		}
 	}
 }

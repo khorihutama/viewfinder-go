@@ -28,6 +28,10 @@ var (
 	procDestroyRenderer = dll.NewProc(
 		"ViewfinderDestroyRenderer",
 	)
+
+	procRendererUploadNV12 = dll.NewProc(
+		"ViewfinderRendererUploadNV12",
+	)
 )
 
 func CreateRenderer(
@@ -111,4 +115,32 @@ func (r *Renderer) Close() {
 	)
 
 	r.ptr = 0
+}
+
+func UploadNV12(
+	data []byte,
+	width uint32,
+	height uint32,
+	stride uint32,
+) error {
+	if len(data) == 0 {
+		return fmt.Errorf("NV12 data is empty")
+	}
+
+	result, _, _ := procRendererUploadNV12.Call(
+		uintptr(unsafe.Pointer(&data[0])),
+		uintptr(len(data)),
+		uintptr(width),
+		uintptr(height),
+		uintptr(stride),
+	)
+
+	if int32(result) < 0 {
+		return fmt.Errorf(
+			"ViewfinderRendererUploadNV12 failed: 0x%08X",
+			uint32(result),
+		)
+	}
+
+	return nil
 }
