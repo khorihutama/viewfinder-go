@@ -81,6 +81,8 @@ func main() {
 	runtime.LockOSThread()
 
 	log.Println("Starting Viewfinder Go")
+	var androidDevice android.Device
+	androidReady := false
 	if devices, err := android.Devices(); err != nil {
 		log.Printf("ADB unavailable: %v", err)
 	} else {
@@ -90,6 +92,8 @@ func main() {
 		if len(devices) == 0 {
 			log.Println("No Android devices connected")
 		} else if device, ok := android.FirstReady(devices); ok {
+			androidDevice = device
+			androidReady = true
 			if _, err := device.Shell("echo", "viewfinder-connected"); err != nil {
 				log.Printf("ADB device command failed: %v", err)
 			} else {
@@ -321,12 +325,13 @@ func main() {
 		}
 		select {
 		case devices := <-androidChanges:
-			if len(devices) == 0 {
-				log.Println("Android device disconnected")
+			if device, ok := android.FirstReady(devices); ok {
+				androidDevice = device
+				androidReady = true
+				log.Printf("Android device ready: %s", device.Serial)
 			} else {
-				for _, device := range devices {
-					log.Printf("Android device state: %s (%s)", device.Serial, device.State)
-				}
+				androidReady = false
+				log.Println("Android device disconnected")
 			}
 		default:
 		}
@@ -343,9 +348,31 @@ func main() {
 			if x, y, ok := window.CursorClient(); ok {
 				clientWidth, clientHeight, _ := window.ClientSize()
 				if x >= 0 && y >= 0 && uint32(x) < clientWidth && uint32(y) < clientHeight {
-					deviceX := int(uint32(x) * current.width / clientWidth)
-					deviceY := int(uint32(y) * current.height / clientHeight)
-					log.Printf("Touch mapping pending: %d,%d", deviceX, deviceY)
+					videoWidth := float64(current.width)
+					videoHeight := float64(current.height)
+					windowWidth := float64(clientWidth)
+					windowHeight := float64(clientHeight)
+					videoAspect := videoWidth / videoHeight
+					windowAspect := windowWidth / windowHeight
+					viewportWidth, viewportHeight := windowWidth, windowHeight
+					if !fillMode {
+						if videoAspect > windowAspect {
+							viewportHeight = viewportWidth / videoAspect
+						} else {
+							viewportWidth = viewportHeight * videoAspect
+						}
+					}
+					offsetX := (windowWidth - viewportWidth) / 2
+					offsetY := (windowHeight - viewportHeight) / 2
+					if float64(x) >= offsetX && float64(y) >= offsetY && float64(x) < offsetX+viewportWidth && float64(y) < offsetY+viewportHeight {
+						deviceX := int((float64(x) - offsetX) * videoWidth / viewportWidth)
+						deviceY := int((float64(y) - offsetY) * videoHeight / viewportHeight)
+						if androidReady {
+							if err := androidDevice.Tap(deviceX, deviceY); err != nil {
+								log.Printf("Android tap failed: %v", err)
+							}
+						}
+					}
 				}
 			}
 		}

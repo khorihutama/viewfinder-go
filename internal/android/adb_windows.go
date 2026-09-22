@@ -80,10 +80,17 @@ func (d Device) Shell(args ...string) ([]byte, error) {
 }
 
 func (d Device) Tap(x, y int) error {
+	return d.TapDisplay(7, x, y)
+}
+
+func (d Device) TapDisplay(displayID, x, y int) error {
+	if displayID < 0 {
+		return fmt.Errorf("display ID must be non-negative")
+	}
 	if x < 0 || y < 0 {
 		return fmt.Errorf("tap coordinates must be non-negative")
 	}
-	_, err := d.Shell("input", "tap", fmt.Sprint(x), fmt.Sprint(y))
+	_, err := d.Shell("input", "tap", "--display", fmt.Sprint(displayID), fmt.Sprint(x), fmt.Sprint(y))
 	return err
 }
 
