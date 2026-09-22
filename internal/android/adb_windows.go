@@ -90,7 +90,7 @@ func (d Device) TapDisplay(displayID, x, y int) error {
 	if x < 0 || y < 0 {
 		return fmt.Errorf("tap coordinates must be non-negative")
 	}
-	_, err := d.Shell("input", "tap", "--display", fmt.Sprint(displayID), fmt.Sprint(x), fmt.Sprint(y))
+	_, err := d.Shell("input", "-d", fmt.Sprint(displayID), "tap", fmt.Sprint(x), fmt.Sprint(y))
 	return err
 }
 
