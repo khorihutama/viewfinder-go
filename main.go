@@ -89,6 +89,12 @@ func main() {
 		}
 		if len(devices) == 0 {
 			log.Println("No Android devices connected")
+		} else if device, ok := android.FirstReady(devices); ok {
+			if _, err := device.Shell("echo", "viewfinder-connected"); err != nil {
+				log.Printf("ADB device command failed: %v", err)
+			} else {
+				log.Printf("ADB command ready: %s", device.Serial)
+			}
 		}
 	}
 	androidDone := make(chan struct{})

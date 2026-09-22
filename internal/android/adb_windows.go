@@ -66,3 +66,24 @@ func Devices() ([]Device, error) {
 	}
 	return devices, scanner.Err()
 }
+
+func (d Device) Shell(args ...string) ([]byte, error) {
+	if d.Serial == "" {
+		return nil, fmt.Errorf("device serial is empty")
+	}
+	commandArgs := append([]string{"-s", d.Serial, "shell"}, args...)
+	output, err := exec.Command("adb", commandArgs...).CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("adb shell: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+	return output, nil
+}
+
+func FirstReady(devices []Device) (Device, bool) {
+	for _, device := range devices {
+		if device.State == "device" {
+			return device, true
+		}
+	}
+	return Device{}, false
+}
