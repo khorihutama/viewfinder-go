@@ -1,18 +1,100 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"runtime"
+	"time"
 
+	"github.com/khorihutama/viewfinder-go/internal/android"
 	"github.com/khorihutama/viewfinder-go/internal/native"
 	"github.com/khorihutama/viewfinder-go/internal/renderer"
 	"github.com/khorihutama/viewfinder-go/internal/win32"
 )
 
+type captureFrame struct {
+	buffer []byte
+	data   uint32
+	width  uint32
+	height uint32
+	stride uint32
+}
+
+func readFrames(capture *native.Capture, buffers chan []byte, frames chan captureFrame, done <-chan struct{}, stopped chan<- struct{}) {
+	defer close(stopped)
+	defer capture.Close()
+	returnBuffer := func(buffer []byte) bool {
+		select {
+		case buffers <- buffer:
+			return true
+		case <-done:
+			return false
+		}
+	}
+
+	for {
+		select {
+		case <-done:
+			return
+		case buffer := <-buffers:
+			if buffer == nil {
+				return
+			}
+			data, width, height, stride, err := capture.ReadFrame(buffer)
+			if err != nil {
+				log.Printf("ReadFrame failed: %v", err)
+				if !returnBuffer(buffer) {
+					return
+				}
+				continue
+			}
+
+			if data == 0 {
+				if !returnBuffer(buffer) {
+					return
+				}
+				continue
+			}
+
+			select {
+			case <-done:
+				returnBuffer(buffer)
+				return
+			case frames <- captureFrame{buffer, data, width, height, stride}:
+			default:
+				select {
+				case old := <-frames:
+					returnBuffer(old.buffer)
+				default:
+				}
+				select {
+				case frames <- captureFrame{buffer, data, width, height, stride}:
+				default:
+					returnBuffer(buffer)
+				}
+			}
+		}
+	}
+}
+
 func main() {
 	runtime.LockOSThread()
 
 	log.Println("Starting Viewfinder Go")
+	if devices, err := android.Devices(); err != nil {
+		log.Printf("ADB unavailable: %v", err)
+	} else {
+		for _, device := range devices {
+			log.Printf("Android device: %s (%s)", device.Serial, device.State)
+		}
+		if len(devices) == 0 {
+			log.Println("No Android devices connected")
+		}
+	}
+	androidDone := make(chan struct{})
+	androidChanges := make(chan []android.Device, 1)
+	go android.Watch(androidDone, androidChanges)
+	defer close(androidDone)
 
 	// ------------------------------------------------------------
 	// Create Win32 window
@@ -206,9 +288,23 @@ func main() {
 			int(selectedFormat.Height) *
 			4
 
-	buffer := make([]byte, bufferSize)
+	bufferA := make([]byte, bufferSize)
+	bufferB := make([]byte, bufferSize)
+	buffers := make(chan []byte, 2)
+	frames := make(chan captureFrame, 1)
+	done := make(chan struct{})
+	stopped := make(chan struct{})
+	buffers <- bufferA
+	buffers <- bufferB
+	go readFrames(capture, buffers, frames, done, stopped)
+
 	renderWidth := uint32(1280)
 	renderHeight := uint32(720)
+	var current *captureFrame
+	fillMode := false
+	fillKeyWasDown := false
+	lastTitle := time.Now()
+	framesReceived := 0
 
 	for running := true; running; {
 		var pumpErr error
@@ -216,6 +312,25 @@ func main() {
 		if pumpErr != nil {
 			log.Fatalf("window message loop failed: %v", pumpErr)
 		}
+		select {
+		case devices := <-androidChanges:
+			if len(devices) == 0 {
+				log.Println("Android device disconnected")
+			} else {
+				for _, device := range devices {
+					log.Printf("Android device state: %s (%s)", device.Serial, device.State)
+				}
+			}
+		default:
+		}
+		fillKeyDown := window.KeyDown('F')
+		if fillKeyDown && !fillKeyWasDown {
+			fillMode = !fillMode
+			if err := renderer.SetFillMode(fillMode); err != nil {
+				log.Fatalf("renderer fill mode failed: %v", err)
+			}
+		}
+		fillKeyWasDown = fillKeyDown
 
 		clientWidth, clientHeight, err := window.ClientSize()
 		if err != nil {
@@ -232,36 +347,30 @@ func main() {
 			renderHeight = clientHeight
 		}
 
-		dataSize,
-			width,
-			height,
-			stride,
-			err := capture.ReadFrame(
-			buffer,
-		)
-
-		if err != nil {
-			log.Printf("ReadFrame failed: %v", err)
-
-			continue
+		select {
+		case frame := <-frames:
+			if current != nil {
+				buffers <- current.buffer
+			}
+			current = &frame
+			framesReceived++
+		default:
+		}
+		if time.Since(lastTitle) >= time.Second {
+			if current != nil {
+				fps := framesReceived / int(time.Since(lastTitle)/time.Second)
+				if err := window.SetTitle(fmt.Sprintf("Viewfinder Go - %dx%d - %d FPS", current.width, current.height, fps)); err != nil {
+					log.Printf("window title update failed: %v", err)
+				}
+			}
+			framesReceived = 0
+			lastTitle = time.Now()
 		}
 
-		if dataSize == 0 {
-			continue
-		}
-
-		err = renderer.UploadNV12(
-			buffer[:dataSize],
-			width,
-			height,
-			stride,
-		)
-
-		if err != nil {
-			log.Fatalf(
-				"NV12 upload failed: %v",
-				err,
-			)
+		if current != nil {
+			if err := renderer.UploadNV12(current.buffer[:current.data], current.width, current.height, current.stride); err != nil {
+				log.Fatalf("NV12 upload failed: %v", err)
+			}
 		}
 
 		if err := renderer.Draw(); err != nil {
@@ -271,5 +380,11 @@ func main() {
 		if err := renderer.Present(); err != nil {
 			log.Fatalf("renderer present failed: %v", err)
 		}
+	}
+
+	close(done)
+	<-stopped
+	if current != nil {
+		buffers <- current.buffer
 	}
 }

@@ -14,13 +14,22 @@ const (
 	CS_VREDRAW = 0x0001
 
 	WS_OVERLAPPEDWINDOW = 0x00CF0000
+	WS_POPUP            = 0x80000000
 	CW_USEDEFAULT       = 0x80000000
 
 	SW_SHOW = 5
 
-	WM_DESTROY = 0x0002
-	WM_CLOSE   = 0x0010
-	WM_QUIT    = 0x0012
+	WM_DESTROY       = 0x0002
+	WM_CLOSE         = 0x0010
+	WM_QUIT          = 0x0012
+	WM_KEYDOWN       = 0x0100
+	VK_F11           = 0x7A
+	GWL_STYLE        = -16
+	SWP_FRAMECHANGED = 0x0020
+	SWP_NOZORDER     = 0x0004
+	SWP_SHOWWINDOW   = 0x0040
+	SM_CXSCREEN      = 0
+	SM_CYSCREEN      = 1
 
 	PM_REMOVE = 0x0001
 )
@@ -78,8 +87,15 @@ var (
 	procDispatchMessageW = user32.NewProc("DispatchMessageW")
 	procPostQuitMessage  = user32.NewProc("PostQuitMessage")
 
-	procDestroyWindow = user32.NewProc("DestroyWindow")
-	procGetClientRect = user32.NewProc("GetClientRect")
+	procDestroyWindow     = user32.NewProc("DestroyWindow")
+	procGetClientRect     = user32.NewProc("GetClientRect")
+	procSetWindowTextW    = user32.NewProc("SetWindowTextW")
+	procGetWindowLongPtrW = user32.NewProc("GetWindowLongPtrW")
+	procSetWindowLongPtrW = user32.NewProc("SetWindowLongPtrW")
+	procGetWindowRect     = user32.NewProc("GetWindowRect")
+	procSetWindowPos      = user32.NewProc("SetWindowPos")
+	procGetSystemMetrics  = user32.NewProc("GetSystemMetrics")
+	procGetAsyncKeyState  = user32.NewProc("GetAsyncKeyState")
 
 	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
 
@@ -87,7 +103,53 @@ var (
 )
 
 type Window struct {
-	HWND uintptr
+	HWND       uintptr
+	fullscreen bool
+	style      uintptr
+	windowRect rect
+}
+
+func (w *Window) KeyDown(key int) bool {
+	result, _, _ := procGetAsyncKeyState.Call(uintptr(key))
+	return int16(result) < 0
+}
+
+func (w *Window) ToggleFullscreen() error {
+	if !w.fullscreen {
+		var old rect
+		if result, _, err := procGetWindowRect.Call(w.HWND, uintptr(unsafe.Pointer(&old))); result == 0 {
+			return fmt.Errorf("GetWindowRect failed: %w", err)
+		}
+		w.style, _, _ = procGetWindowLongPtrW.Call(w.HWND, ^uintptr(15))
+		w.windowRect = old
+		procSetWindowLongPtrW.Call(w.HWND, ^uintptr(15), WS_POPUP)
+		width, _, _ := procGetSystemMetrics.Call(SM_CXSCREEN)
+		height, _, _ := procGetSystemMetrics.Call(SM_CYSCREEN)
+		procSetWindowPos.Call(w.HWND, 0, 0, 0, width, height, SWP_FRAMECHANGED|SWP_NOZORDER|SWP_SHOWWINDOW)
+		w.fullscreen = true
+		return nil
+	}
+	procSetWindowLongPtrW.Call(w.HWND, ^uintptr(15), w.style)
+	width := uintptr(w.windowRect.Right - w.windowRect.Left)
+	height := uintptr(w.windowRect.Bottom - w.windowRect.Top)
+	procSetWindowPos.Call(w.HWND, 0, uintptr(w.windowRect.Left), uintptr(w.windowRect.Top), width, height, SWP_FRAMECHANGED|SWP_NOZORDER|SWP_SHOWWINDOW)
+	w.fullscreen = false
+	return nil
+}
+
+func (w *Window) SetTitle(title string) error {
+	titlePtr, err := windows.UTF16PtrFromString(title)
+	if err != nil {
+		return err
+	}
+	result, _, callErr := procSetWindowTextW.Call(
+		w.HWND,
+		uintptr(unsafe.Pointer(titlePtr)),
+	)
+	if result == 0 {
+		return fmt.Errorf("SetWindowTextW failed: %w", callErr)
+	}
+	return nil
 }
 
 func Create(title string, width, height int) (*Window, error) {
@@ -205,6 +267,12 @@ func (w *Window) Pump() (bool, error) {
 
 		if message.Message == WM_QUIT {
 			return false, nil
+		}
+		if message.Message == WM_KEYDOWN && message.WParam == VK_F11 {
+			if err := w.ToggleFullscreen(); err != nil {
+				return false, err
+			}
+			continue
 		}
 
 		procTranslateMessage.Call(

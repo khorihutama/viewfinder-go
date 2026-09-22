@@ -25,6 +25,8 @@ VIEWFINDER_API int32_t ViewfinderRendererResize(
     uint32_t height
 );
 
+VIEWFINDER_API int32_t ViewfinderRendererSetFillMode(int32_t fill);
+
 VIEWFINDER_API void ViewfinderRendererDestroy();
 
 VIEWFINDER_API int32_t ViewfinderRendererDraw();

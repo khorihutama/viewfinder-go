@@ -30,6 +30,7 @@ static uint32_t g_backBufferWidth = 0;
 static uint32_t g_backBufferHeight = 0;
 static uint32_t g_videoWidth = 0;
 static uint32_t g_videoHeight = 0;
+static bool g_fillMode = false;
 
 static void SetViewport()
 {
@@ -47,13 +48,21 @@ static void SetViewport()
             static_cast<float>(g_videoWidth) / g_videoHeight;
         const float windowAspect = width / height;
 
-        if (videoAspect > windowAspect)
+        if (!g_fillMode && videoAspect > windowAspect)
         {
             height = width / videoAspect;
         }
-        else
+        else if (!g_fillMode)
         {
             width = height * videoAspect;
+        }
+        else if (videoAspect > windowAspect)
+        {
+            width = height * videoAspect;
+        }
+        else
+        {
+            height = width / videoAspect;
         }
     }
 
@@ -65,6 +74,13 @@ static void SetViewport()
     viewport.MinDepth = 0.0f;
     viewport.MaxDepth = 1.0f;
     g_context->RSSetViewports(1, &viewport);
+}
+
+VIEWFINDER_API int32_t ViewfinderRendererSetFillMode(int32_t fill)
+{
+    g_fillMode = fill != 0;
+    SetViewport();
+    return S_OK;
 }
 
 static HRESULT CreateRenderTarget()

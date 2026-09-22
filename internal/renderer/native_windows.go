@@ -25,6 +25,7 @@ var (
 	procRendererResize = dll.NewProc(
 		"ViewfinderRendererResize",
 	)
+	procRendererSetFillMode = dll.NewProc("ViewfinderRendererSetFillMode")
 
 	procRendererDestroy = dll.NewProc(
 		"ViewfinderRendererDestroy",
@@ -61,6 +62,18 @@ func InitializeWindow(
 		)
 	}
 
+	return nil
+}
+
+func SetFillMode(fill bool) error {
+	value := uintptr(0)
+	if fill {
+		value = 1
+	}
+	result, _, _ := procRendererSetFillMode.Call(value)
+	if int32(result) < 0 {
+		return fmt.Errorf("ViewfinderRendererSetFillMode failed: 0x%08X", uint32(result))
+	}
 	return nil
 }
 

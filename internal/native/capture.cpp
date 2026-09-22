@@ -1127,20 +1127,22 @@ VIEWFINDER_API int32_t ViewfinderCaptureReadFrame(
 
     LONG stride = 0;
 
-    hr = MFGetStrideForBitmapInfoHeader(
-        subtype.Data1,
-        width,
-        &stride
-    );
-
-    if (FAILED(hr))
+    if (subtype == MFVideoFormat_NV12)
     {
-        /*
-         * Some formats don't have a bitmap stride.
-         * Returning 0 tells the caller that the format
-         * isn't currently handled as a bitmap.
-         */
-        stride = 0;
+        stride = static_cast<LONG>(width);
+    }
+    else
+    {
+        hr = MFGetStrideForBitmapInfoHeader(
+            subtype.Data1,
+            width,
+            &stride
+        );
+
+        if (FAILED(hr))
+        {
+            stride = 0;
+        }
     }
 
     mediaType->Release();
