@@ -360,6 +360,7 @@ func main() {
 	fillKeyWasDown := false
 	mouseWasDown := false
 	mouseStartX, mouseStartY := 0, 0
+	lastMotionX, lastMotionY := 0, 0
 	lastTitle := time.Now()
 	framesReceived := 0
 
@@ -409,6 +410,25 @@ func main() {
 				clientWidth, clientHeight, _ := window.ClientSize()
 				if _, _, ok := mapClientToVideo(x, y, clientWidth, clientHeight, selectedFormat.Width, selectedFormat.Height, fillMode); ok {
 					mouseStartX, mouseStartY = int(x), int(y)
+					lastMotionX, lastMotionY = mouseStartX, mouseStartY
+					if inputSession != nil {
+						if deviceX, deviceY, mapped := mapClientToVideo(x, y, clientWidth, clientHeight, selectedFormat.Width, selectedFormat.Height, fillMode); mapped {
+							if err := inputSession.Motion("DOWN", deviceX, deviceY); err != nil {
+								log.Printf("Android touch down failed: %v", err)
+							}
+						}
+					}
+				}
+			}
+		}
+		if mouseDown && mouseWasDown && androidReady && inputSession != nil {
+			if x, y, ok := window.CursorClient(); ok {
+				clientWidth, clientHeight, _ := window.ClientSize()
+				if deviceX, deviceY, mapped := mapClientToVideo(x, y, clientWidth, clientHeight, selectedFormat.Width, selectedFormat.Height, fillMode); mapped && (abs(deviceX-lastMotionX)+abs(deviceY-lastMotionY) >= 2) {
+					if err := inputSession.Motion("MOVE", deviceX, deviceY); err != nil {
+						log.Printf("Android touch move failed: %v", err)
+					}
+					lastMotionX, lastMotionY = deviceX, deviceY
 				}
 			}
 		}
@@ -418,6 +438,11 @@ func main() {
 				x1, y1, startOK := mapClientToVideo(int32(mouseStartX), int32(mouseStartY), clientWidth, clientHeight, selectedFormat.Width, selectedFormat.Height, fillMode)
 				x2, y2, endOK := mapClientToVideo(x, y, clientWidth, clientHeight, selectedFormat.Width, selectedFormat.Height, fillMode)
 				if startOK && endOK {
+					if inputSession != nil {
+						if err := inputSession.Motion("UP", x2, y2); err != nil {
+							log.Printf("Android touch up failed: %v", err)
+						}
+					}
 					if abs(x2-x1)+abs(y2-y1) < 8 {
 						if inputSession != nil {
 							if err := inputSession.Tap(x2, y2); err != nil {

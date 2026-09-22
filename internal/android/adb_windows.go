@@ -66,6 +66,13 @@ func (s *InputSession) Swipe(x1, y1, x2, y2, durationMS int) error {
 	return s.command(s.displayID, "swipe", strconv.Itoa(x1), strconv.Itoa(y1), strconv.Itoa(x2), strconv.Itoa(y2), strconv.Itoa(durationMS))
 }
 
+func (s *InputSession) Motion(action string, x, y int) error {
+	if action != "DOWN" && action != "MOVE" && action != "UP" {
+		return fmt.Errorf("invalid motion action: %s", action)
+	}
+	return s.command(s.displayID, "motionevent", action, strconv.Itoa(x), strconv.Itoa(y))
+}
+
 func (s *InputSession) Close() error {
 	s.mu.Lock()
 	if s.stdin == nil {
