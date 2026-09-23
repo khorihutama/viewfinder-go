@@ -117,6 +117,10 @@ var (
 	procGetAsyncKeyState  = user32.NewProc("GetAsyncKeyState")
 	procGetCursorPos      = user32.NewProc("GetCursorPos")
 	procScreenToClient    = user32.NewProc("ScreenToClient")
+	procCreatePopupMenu   = user32.NewProc("CreatePopupMenu")
+	procAppendMenuW       = user32.NewProc("AppendMenuW")
+	procTrackPopupMenu    = user32.NewProc("TrackPopupMenu")
+	procDestroyMenu       = user32.NewProc("DestroyMenu")
 
 	procGetModuleHandleW = kernel32.NewProc("GetModuleHandleW")
 
@@ -152,6 +156,30 @@ func (w *Window) CursorClient() (int32, int32, bool) {
 		return 0, 0, false
 	}
 	return p.X, p.Y, true
+}
+
+func (w *Window) ShowCaptureMenu(items []string) (int, error) {
+	menu, _, err := procCreatePopupMenu.Call()
+	if menu == 0 {
+		return 0, fmt.Errorf("CreatePopupMenu failed: %w", err)
+	}
+	defer procDestroyMenu.Call(menu)
+	for index, item := range items {
+		text, textErr := windows.UTF16PtrFromString(item)
+		if textErr != nil {
+			return 0, textErr
+		}
+		procAppendMenuW.Call(menu, 0, uintptr(index+1), uintptr(unsafe.Pointer(text)))
+	}
+	x, y, ok := w.CursorClient()
+	if !ok {
+		return 0, fmt.Errorf("cursor position unavailable")
+	}
+	result, _, callErr := procTrackPopupMenu.Call(menu, 0x0000|0x0100, uintptr(x), uintptr(y), 0, w.HWND, 0)
+	if result == 0 {
+		return 0, callErr
+	}
+	return int(result), nil
 }
 
 func (w *Window) ToggleFullscreen() error {

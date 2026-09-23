@@ -37,10 +37,7 @@ type captureFrame struct {
 	stride uint32
 }
 
-type captureSwitch struct {
-	deviceIndex uint32
-	formatIndex uint32
-}
+type captureSwitch struct{ deviceIndex, formatIndex uint32 }
 
 func mapClientToVideo(x, y int32, clientWidth, clientHeight, videoWidth, videoHeight uint32, fill bool) (int, int, bool) {
 	if x < 0 || y < 0 || uint32(x) >= clientWidth || uint32(y) >= clientHeight {
@@ -426,6 +423,7 @@ func main() {
 	mouseStartX, mouseStartY := 0, 0
 	lastMotionX, lastMotionY := 0, 0
 	keyWasDown := map[int]bool{}
+	rightWasDown := false
 	lastTitle := time.Now()
 	framesReceived := 0
 
@@ -473,6 +471,22 @@ func main() {
 			}
 		}
 		fillKeyWasDown = fillKeyDown
+		rightDown := window.KeyDown(0x02)
+		if rightDown && !rightWasDown {
+			items := make([]string, len(devices))
+			for i, device := range devices {
+				items[i] = fmt.Sprintf("%d: %s", device.Index, device.Name)
+			}
+			if choice, menuErr := window.ShowCaptureMenu(items); menuErr == nil && choice > 0 && choice <= len(devices) {
+				selected := devices[choice-1]
+				formats, formatErr := capture.Formats(selected.Index)
+				if formatErr == nil && len(formats) > 0 {
+					deviceIndex, formatIndex, selectedFormat = selected.Index, formats[0].Index, formats[0]
+					switches <- captureSwitch{deviceIndex, formatIndex}
+				}
+			}
+		}
+		rightWasDown = rightDown
 		for _, key := range []struct {
 			vk      int
 			android string
