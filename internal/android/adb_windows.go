@@ -108,10 +108,14 @@ func ResolveDisplayID(d Device) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	return parseDisplayID(string(output))
+}
+
+func parseDisplayID(output string) (int, error) {
 	pending := -1
 	external := false
 	highest := 0
-	for _, line := range strings.Split(string(output), "\n") {
+	for _, line := range strings.Split(output, "\n") {
 		upper := strings.ToUpper(line)
 		if strings.Contains(upper, "HDMI") || strings.Contains(upper, "EXTERNAL") {
 			external = true
