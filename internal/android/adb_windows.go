@@ -28,6 +28,12 @@ type InputSession struct {
 	mu        sync.Mutex
 }
 
+func (s *InputSession) Alive() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.stdin != nil
+}
+
 func (d Device) StartInput() (*InputSession, error) {
 	displayID, err := d.targetDisplay()
 	if err != nil {

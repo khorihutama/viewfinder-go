@@ -120,6 +120,7 @@ func main() {
 
 	log.Println("Starting Viewfinder Go")
 	androidReady := false
+	var androidDevice android.Device
 	var inputSession *android.InputSession
 	if devices, err := android.Devices(); err != nil {
 		log.Printf("ADB unavailable: %v", err)
@@ -138,6 +139,7 @@ func main() {
 				device.Display = -1
 			}
 			androidReady = true
+			androidDevice = device
 			inputSession, _ = device.StartInput()
 			if _, err := device.Shell("echo", "viewfinder-connected"); err != nil {
 				log.Printf("ADB device command failed: %v", err)
@@ -382,6 +384,7 @@ func main() {
 					log.Printf("Android external display detection failed: %v", resolveErr)
 				}
 				androidReady = true
+				androidDevice = device
 				if inputSession != nil {
 					_ = inputSession.Close()
 				}
@@ -396,6 +399,9 @@ func main() {
 				log.Println("Android device disconnected")
 			}
 		default:
+		}
+		if androidReady && (inputSession == nil || !inputSession.Alive()) {
+			inputSession, _ = androidDevice.StartInput()
 		}
 		fillKeyDown := window.KeyDown('F')
 		if fillKeyDown && !fillKeyWasDown {
