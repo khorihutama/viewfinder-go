@@ -28,6 +28,11 @@ type captureFrame struct {
 	stride uint32
 }
 
+type captureSwitch struct {
+	deviceIndex uint32
+	formatIndex uint32
+}
+
 func mapClientToVideo(x, y int32, clientWidth, clientHeight, videoWidth, videoHeight uint32, fill bool) (int, int, bool) {
 	if x < 0 || y < 0 || uint32(x) >= clientWidth || uint32(y) >= clientHeight {
 		return 0, 0, false
@@ -49,7 +54,7 @@ func mapClientToVideo(x, y int32, clientWidth, clientHeight, videoWidth, videoHe
 	return int((float64(x) - offsetX) * float64(videoWidth) / viewportWidth), int((float64(y) - offsetY) * float64(videoHeight) / viewportHeight), true
 }
 
-func readFrames(capture *native.Capture, deviceIndex, formatIndex uint32, buffers chan []byte, frames chan captureFrame, done <-chan struct{}, stopped chan<- struct{}) {
+func readFrames(capture *native.Capture, deviceIndex, formatIndex uint32, buffers chan []byte, frames chan captureFrame, switches <-chan captureSwitch, done <-chan struct{}, stopped chan<- struct{}) {
 	defer close(stopped)
 	defer capture.Close()
 	lastReadError := time.Time{}
@@ -68,6 +73,14 @@ func readFrames(capture *native.Capture, deviceIndex, formatIndex uint32, buffer
 		select {
 		case <-done:
 			return
+		case request := <-switches:
+			capture.Close()
+			if err := capture.Open(request.deviceIndex, request.formatIndex); err != nil {
+				log.Printf("capture switch failed: %v", err)
+			} else {
+				readErrors = 0
+				log.Printf("capture switched: device=%d format=%d", request.deviceIndex, request.formatIndex)
+			}
 		case buffer := <-buffers:
 			if buffer == nil {
 				return
@@ -388,11 +401,12 @@ func main() {
 	bufferB := make([]byte, bufferSize)
 	buffers := make(chan []byte, 2)
 	frames := make(chan captureFrame, 1)
+	switches := make(chan captureSwitch, 1)
 	done := make(chan struct{})
 	stopped := make(chan struct{})
 	buffers <- bufferA
 	buffers <- bufferB
-	go readFrames(capture, deviceIndex, formatIndex, buffers, frames, done, stopped)
+	go readFrames(capture, deviceIndex, formatIndex, buffers, frames, switches, done, stopped)
 
 	renderWidth := uint32(1280)
 	renderHeight := uint32(720)
@@ -403,6 +417,7 @@ func main() {
 	mouseStartX, mouseStartY := 0, 0
 	lastMotionX, lastMotionY := 0, 0
 	keyWasDown := map[int]bool{}
+	cycleKeyWasDown := false
 	lastTitle := time.Now()
 	framesReceived := 0
 
@@ -450,6 +465,23 @@ func main() {
 			}
 		}
 		fillKeyWasDown = fillKeyDown
+		cycleKeyDown := window.KeyDown('C')
+		if cycleKeyDown && !cycleKeyWasDown && len(devices) > 1 {
+			for index, device := range devices {
+				if device.Index == deviceIndex {
+					next := devices[(index+1)%len(devices)]
+					newFormats, formatErr := capture.Formats(next.Index)
+					if formatErr == nil && len(newFormats) > 0 {
+						deviceIndex = next.Index
+						formatIndex = newFormats[0].Index
+						selectedFormat = newFormats[0]
+						switches <- captureSwitch{deviceIndex, formatIndex}
+					}
+					break
+				}
+			}
+		}
+		cycleKeyWasDown = cycleKeyDown
 		for _, key := range []struct {
 			vk      int
 			android string
