@@ -40,3 +40,7 @@ Thumbs.db
 # Go workspace
 go.work
 go.work.sum
+.gocache/
+
+# Vibecode harness backups
+.vibecode-backup*/
