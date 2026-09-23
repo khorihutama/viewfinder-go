@@ -182,7 +182,10 @@ func main() {
 			}
 			androidReady = true
 			androidDevice = device
-			inputSession, _ = device.StartInput()
+			inputSession, err = device.StartInput()
+			if err != nil {
+				log.Printf("ADB input session failed: %v", err)
+			}
 			if _, err := device.Shell("echo", "viewfinder-connected"); err != nil {
 				log.Printf("ADB device command failed: %v", err)
 			} else {
@@ -448,7 +451,10 @@ func main() {
 				if inputSession != nil {
 					_ = inputSession.Close()
 				}
-				inputSession, _ = device.StartInput()
+				inputSession, err = device.StartInput()
+				if err != nil {
+					log.Printf("ADB input session failed: %v", err)
+				}
 				log.Printf("Android device ready: %s", device.Serial)
 			} else {
 				androidReady = false
@@ -461,7 +467,10 @@ func main() {
 		default:
 		}
 		if androidReady && (inputSession == nil || !inputSession.Alive()) {
-			inputSession, _ = androidDevice.StartInput()
+			inputSession, err = androidDevice.StartInput()
+			if err != nil {
+				log.Printf("ADB input session recovery failed: %v", err)
+			}
 		}
 		fillKeyDown := window.KeyDown('F')
 		if fillKeyDown && !fillKeyWasDown {
