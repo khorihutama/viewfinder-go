@@ -53,6 +53,7 @@ func readFrames(capture *native.Capture, deviceIndex, formatIndex uint32, buffer
 	defer capture.Close()
 	lastReadError := time.Time{}
 	readErrors := 0
+	nextReopen := time.Time{}
 	returnBuffer := func(buffer []byte) bool {
 		select {
 		case buffers <- buffer:
@@ -80,7 +81,8 @@ func readFrames(capture *native.Capture, deviceIndex, formatIndex uint32, buffer
 				if !returnBuffer(buffer) {
 					return
 				}
-				if readErrors >= 40 {
+				if readErrors >= 40 && time.Now().After(nextReopen) {
+					nextReopen = time.Now().Add(2 * time.Second)
 					capture.Close()
 					reopenDevice, reopenFormat := deviceIndex, formatIndex
 					if devices, enumerateErr := capture.Devices(); enumerateErr == nil && len(devices) > 0 {
