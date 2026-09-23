@@ -23,6 +23,7 @@ const (
 	WM_CLOSE         = 0x0010
 	WM_QUIT          = 0x0012
 	WM_KEYDOWN       = 0x0100
+	WM_MOUSEWHEEL    = 0x020A
 	VK_LBUTTON       = 0x01
 	VK_BACK          = 0x08
 	VK_RETURN        = 0x0D
@@ -127,6 +128,14 @@ type Window struct {
 	fullscreen bool
 	style      uintptr
 	windowRect rect
+}
+
+var wheelDelta int32
+
+func (w *Window) ConsumeWheel() int32 {
+	delta := wheelDelta
+	wheelDelta = 0
+	return delta
 }
 
 func (w *Window) KeyDown(key int) bool {
@@ -374,6 +383,10 @@ func wndProc(
 	lParam uintptr,
 ) uintptr {
 	switch message {
+	case WM_MOUSEWHEEL:
+		wheelDelta += int32(int16((wParam >> 16) & 0xffff))
+		return 0
+
 	case WM_CLOSE:
 		procDestroyWindow.Call(hwnd)
 		return 0

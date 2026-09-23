@@ -544,6 +544,16 @@ func main() {
 			}
 		}
 		mouseWasDown = mouseDown
+		if delta := window.ConsumeWheel(); delta != 0 && androidReady && inputSession != nil {
+			if x, y, ok := window.CursorClient(); ok {
+				clientWidth, clientHeight, _ := window.ClientSize()
+				if deviceX, deviceY, mapped := mapClientToVideo(x, y, clientWidth, clientHeight, selectedFormat.Width, selectedFormat.Height, fillMode); mapped {
+					if err := inputSession.Scroll(deviceX, deviceY, int(delta)); err != nil {
+						log.Printf("Android scroll failed: %v", err)
+					}
+				}
+			}
+		}
 
 		clientWidth, clientHeight, err := window.ClientSize()
 		if err != nil {
