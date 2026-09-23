@@ -475,21 +475,19 @@ func main() {
 		if rightDown && !rightWasDown {
 			items := make([]string, len(devices))
 			for i, device := range devices {
-				items[i] = fmt.Sprintf("%d: %s", device.Index, device.Name)
+				marker := ""
+				if device.Index == deviceIndex {
+					marker = "[current] "
+				}
+				items[i] = fmt.Sprintf("%s%d: %s", marker, device.Index, device.Name)
 			}
 			if choice, menuErr := window.ShowCaptureMenu(items); menuErr == nil && choice > 0 && choice <= len(devices) {
 				selected := devices[choice-1]
 				formats, formatErr := capture.Formats(selected.Index)
 				if formatErr == nil && len(formats) > 0 {
-					formatItems := make([]string, len(formats))
-					for i, format := range formats {
-						formatItems[i] = fmt.Sprintf("%dx%d @ %.2f FPS - %s", format.Width, format.Height, float64(format.FPSNumerator)/float64(format.FPSDenominator), format.Subtype)
-					}
-					if formatChoice, formatMenuErr := window.ShowCaptureMenu(formatItems); formatMenuErr == nil && formatChoice > 0 && formatChoice <= len(formats) {
-						selectedFormat = formats[formatChoice-1]
-						deviceIndex, formatIndex = selected.Index, selectedFormat.Index
-						switches <- captureSwitch{deviceIndex, formatIndex}
-					}
+					selectedFormat = formats[0]
+					deviceIndex, formatIndex = selected.Index, selectedFormat.Index
+					switches <- captureSwitch{deviceIndex, formatIndex}
 				}
 			}
 		}
