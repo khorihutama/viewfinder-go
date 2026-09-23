@@ -473,6 +473,9 @@ func main() {
 		fillKeyWasDown = fillKeyDown
 		rightDown := window.KeyDown(0x02)
 		if rightDown && !rightWasDown {
+			if refreshed, refreshErr := capture.Devices(); refreshErr == nil && len(refreshed) > 0 {
+				devices = refreshed
+			}
 			items := make([]string, len(devices))
 			for i, device := range devices {
 				marker := ""
