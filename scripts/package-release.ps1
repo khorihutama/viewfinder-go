@@ -22,4 +22,12 @@ foreach ($name in $required) {
 }
 
 Copy-Item -LiteralPath (Join-Path $root 'README.md') -Destination (Join-Path $dist 'README.md') -Force
+$revision = (git -C $root rev-parse --short HEAD 2>$null)
+$manifest = @{
+    application = 'Viewfinder Go'
+    revision = $revision
+    packagedAt = (Get-Date).ToUniversalTime().ToString('o')
+    artifacts = $required
+} | ConvertTo-Json
+Set-Content -LiteralPath (Join-Path $dist 'release.json') -Value $manifest -Encoding utf8
 Write-Output "Release package created: $dist"
