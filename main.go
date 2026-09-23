@@ -29,6 +29,21 @@ func captureDeviceName(devices []native.CaptureDevice, index uint32) string {
 	return "unknown"
 }
 
+func selectCaptureDevice(devices []native.CaptureDevice, requested string) (uint32, bool) {
+	if len(devices) == 0 {
+		return 0, false
+	}
+	if requested == "" {
+		return devices[0].Index, true
+	}
+	for _, device := range devices {
+		if requested == device.Name || requested == fmt.Sprint(device.Index) {
+			return device.Index, true
+		}
+	}
+	return 0, false
+}
+
 type captureFrame struct {
 	buffer []byte
 	data   uint32
@@ -295,19 +310,9 @@ func main() {
 	// ------------------------------------------------------------
 
 	selectedCapture := os.Getenv("VIEWFINDER_CAPTURE_DEVICE")
-	deviceIndex := devices[0].Index
-	if selectedCapture != "" {
-		matched := false
-		for _, device := range devices {
-			if selectedCapture == device.Name || selectedCapture == fmt.Sprint(device.Index) {
-				deviceIndex = device.Index
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			log.Fatalf("selected capture device unavailable: %s", selectedCapture)
-		}
+	deviceIndex, matched := selectCaptureDevice(devices, selectedCapture)
+	if !matched {
+		log.Fatalf("selected capture device unavailable: %s", selectedCapture)
 	}
 
 	log.Printf(
