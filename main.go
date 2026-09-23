@@ -677,7 +677,11 @@ func main() {
 		if time.Since(lastTitle) >= time.Second {
 			if current != nil {
 				fps := framesReceived / int(time.Since(lastTitle)/time.Second)
-				if err := window.SetTitle(fmt.Sprintf("Viewfinder Go - %dx%d - %d FPS", current.width, current.height, fps)); err != nil {
+				androidStatus := "Android disconnected"
+				if androidReady {
+					androidStatus = "Android connected"
+				}
+				if err := window.SetTitle(fmt.Sprintf("Viewfinder Go - %dx%d - %d FPS - %s", current.width, current.height, fps, androidStatus)); err != nil {
 					log.Printf("window title update failed: %v", err)
 				}
 			} else if err := window.SetTitle("Viewfinder Go - Capture reconnecting"); err != nil {
