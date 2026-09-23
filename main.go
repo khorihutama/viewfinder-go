@@ -614,26 +614,15 @@ func main() {
 		if !mouseDown && mouseWasDown && androidReady {
 			if x, y, ok := window.CursorClient(); ok {
 				clientWidth, clientHeight, _ := window.ClientSize()
-				x1, y1, startOK := mapClientToVideo(int32(mouseStartX), int32(mouseStartY), clientWidth, clientHeight, selectedFormat.Width, selectedFormat.Height, fillMode)
+				_, _, startOK := mapClientToVideo(int32(mouseStartX), int32(mouseStartY), clientWidth, clientHeight, selectedFormat.Width, selectedFormat.Height, fillMode)
 				x2, y2, endOK := mapClientToVideo(x, y, clientWidth, clientHeight, selectedFormat.Width, selectedFormat.Height, fillMode)
 				if startOK && endOK {
 					if inputSession != nil {
 						if err := inputSession.Motion("UP", x2, y2); err != nil {
 							log.Printf("Android touch up failed: %v", err)
 						}
-					}
-					if abs(x2-x1)+abs(y2-y1) < 8 {
-						if inputSession != nil {
-							if err := inputSession.Tap(x2, y2); err != nil {
-								log.Printf("Android tap failed: %v", err)
-							}
-						}
 					} else {
-						if inputSession != nil {
-							if err := inputSession.Swipe(x1, y1, x2, y2, 120); err != nil {
-								log.Printf("Android swipe failed: %v", err)
-							}
-						}
+						log.Printf("Android gesture dropped: input session unavailable")
 					}
 				}
 			}
