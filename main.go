@@ -476,6 +476,11 @@ func main() {
 			if refreshed, refreshErr := capture.Devices(); refreshErr == nil && len(refreshed) > 0 {
 				devices = refreshed
 			}
+			if len(devices) == 0 {
+				log.Println("capture menu: no capture devices available")
+				rightWasDown = rightDown
+				continue
+			}
 			items := make([]string, len(devices))
 			for i, device := range devices {
 				marker := ""

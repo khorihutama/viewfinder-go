@@ -277,3 +277,15 @@ func FirstReady(devices []Device) (Device, bool) {
 	}
 	return Device{}, false
 }
+
+func SelectReady(devices []Device, serial string) (Device, bool) {
+	if serial != "" {
+		for _, device := range devices {
+			if device.Serial == serial && device.State == "device" {
+				return device, true
+			}
+		}
+		return Device{}, false
+	}
+	return FirstReady(devices)
+}
