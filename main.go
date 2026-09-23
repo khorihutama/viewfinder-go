@@ -612,6 +612,8 @@ func main() {
 				if err := window.SetTitle(fmt.Sprintf("Viewfinder Go - %dx%d - %d FPS", current.width, current.height, fps)); err != nil {
 					log.Printf("window title update failed: %v", err)
 				}
+			} else if err := window.SetTitle("Viewfinder Go - Capture reconnecting"); err != nil {
+				log.Printf("window title update failed: %v", err)
 			}
 			framesReceived = 0
 			lastTitle = time.Now()
