@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 	"runtime"
 	"time"
 
@@ -141,6 +142,7 @@ func main() {
 
 	log.Println("Starting Viewfinder Go")
 	androidReady := false
+	selectedAndroidSerial := os.Getenv("VIEWFINDER_ANDROID_DEVICE")
 	var androidDevice android.Device
 	var inputSession *android.InputSession
 	if devices, err := android.Devices(); err != nil {
@@ -151,7 +153,7 @@ func main() {
 		}
 		if len(devices) == 0 {
 			log.Println("No Android devices connected")
-		} else if device, ok := android.FirstReady(devices); ok {
+		} else if device, ok := android.SelectReady(devices, selectedAndroidSerial); ok {
 			if displayID, resolveErr := android.ResolveDisplayID(device); resolveErr == nil {
 				device.Display = displayID
 				log.Printf("Android external display: %d", displayID)
@@ -167,6 +169,8 @@ func main() {
 			} else {
 				log.Printf("ADB command ready: %s", device.Serial)
 			}
+		} else if selectedAndroidSerial != "" {
+			log.Printf("Selected Android device unavailable: %s", selectedAndroidSerial)
 		}
 	}
 	androidDone := make(chan struct{})
@@ -268,7 +272,21 @@ func main() {
 	// Select first capture device
 	// ------------------------------------------------------------
 
+	selectedCapture := os.Getenv("VIEWFINDER_CAPTURE_DEVICE")
 	deviceIndex := devices[0].Index
+	if selectedCapture != "" {
+		matched := false
+		for _, device := range devices {
+			if selectedCapture == device.Name || selectedCapture == fmt.Sprint(device.Index) {
+				deviceIndex = device.Index
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			log.Fatalf("selected capture device unavailable: %s", selectedCapture)
+		}
+	}
 
 	log.Printf(
 		"Using device [%d]: %s",
@@ -396,7 +414,7 @@ func main() {
 		}
 		select {
 		case devices := <-androidChanges:
-			if device, ok := android.FirstReady(devices); ok {
+			if device, ok := android.SelectReady(devices, selectedAndroidSerial); ok {
 				if displayID, resolveErr := android.ResolveDisplayID(device); resolveErr == nil {
 					device.Display = displayID
 					log.Printf("Android external display: %d", displayID)
