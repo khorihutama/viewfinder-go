@@ -422,6 +422,27 @@ func main() {
 			}
 			keyWasDown[key.vk] = down
 		}
+		for _, key := range []struct {
+			vk      int
+			android string
+		}{
+			{win32.VK_LEFT, "KEYCODE_DPAD_LEFT"},
+			{win32.VK_RIGHT, "KEYCODE_DPAD_RIGHT"},
+			{win32.VK_UP, "KEYCODE_DPAD_UP"},
+			{win32.VK_DOWN, "KEYCODE_DPAD_DOWN"},
+			{win32.VK_HOME, "KEYCODE_MOVE_HOME"},
+			{win32.VK_END, "KEYCODE_MOVE_END"},
+			{win32.VK_PRIOR, "KEYCODE_PAGE_UP"},
+			{win32.VK_NEXT, "KEYCODE_PAGE_DOWN"},
+		} {
+			down := window.KeyDown(key.vk)
+			if down && !keyWasDown[key.vk] && androidReady && inputSession != nil {
+				if err := inputSession.KeyEvent(key.android); err != nil {
+					log.Printf("Android key failed: %v", err)
+				}
+			}
+			keyWasDown[key.vk] = down
+		}
 		for key := 'A'; key <= 'Z'; key++ {
 			down := window.KeyDown(int(key))
 			if down && !keyWasDown[int(key)] && androidReady && inputSession != nil {

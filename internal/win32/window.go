@@ -28,6 +28,14 @@ const (
 	VK_RETURN        = 0x0D
 	VK_ESCAPE        = 0x1B
 	VK_SPACE         = 0x20
+	VK_PRIOR         = 0x21
+	VK_NEXT          = 0x22
+	VK_END           = 0x23
+	VK_HOME          = 0x24
+	VK_LEFT          = 0x25
+	VK_UP            = 0x26
+	VK_RIGHT         = 0x27
+	VK_DOWN          = 0x28
 	VK_F11           = 0x7A
 	GWL_STYLE        = -16
 	SWP_FRAMECHANGED = 0x0020
