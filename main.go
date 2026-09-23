@@ -505,6 +505,9 @@ func main() {
 					selectedFormat = formats[0]
 					deviceIndex, formatIndex = selected.Index, selectedFormat.Index
 					switches <- captureSwitch{deviceIndex, formatIndex}
+					if err := window.SetTitle(fmt.Sprintf("Viewfinder Go - %s - Capture reconnecting", selected.Name)); err != nil {
+						log.Printf("window title update failed: %v", err)
+					}
 				}
 			}
 		}
