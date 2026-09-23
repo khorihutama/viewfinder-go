@@ -481,8 +481,15 @@ func main() {
 				selected := devices[choice-1]
 				formats, formatErr := capture.Formats(selected.Index)
 				if formatErr == nil && len(formats) > 0 {
-					deviceIndex, formatIndex, selectedFormat = selected.Index, formats[0].Index, formats[0]
-					switches <- captureSwitch{deviceIndex, formatIndex}
+					formatItems := make([]string, len(formats))
+					for i, format := range formats {
+						formatItems[i] = fmt.Sprintf("%dx%d @ %.2f FPS - %s", format.Width, format.Height, float64(format.FPSNumerator)/float64(format.FPSDenominator), format.Subtype)
+					}
+					if formatChoice, formatMenuErr := window.ShowCaptureMenu(formatItems); formatMenuErr == nil && formatChoice > 0 && formatChoice <= len(formats) {
+						selectedFormat = formats[formatChoice-1]
+						deviceIndex, formatIndex = selected.Index, selectedFormat.Index
+						switches <- captureSwitch{deviceIndex, formatIndex}
+					}
 				}
 			}
 		}
