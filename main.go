@@ -20,6 +20,15 @@ func abs(value int) int {
 	return value
 }
 
+func captureDeviceName(devices []native.CaptureDevice, index uint32) string {
+	for _, device := range devices {
+		if device.Index == index {
+			return device.Name
+		}
+	}
+	return "unknown"
+}
+
 type captureFrame struct {
 	buffer []byte
 	data   uint32
@@ -304,7 +313,7 @@ func main() {
 	log.Printf(
 		"Using device [%d]: %s",
 		deviceIndex,
-		devices[0].Name,
+		captureDeviceName(devices, deviceIndex),
 	)
 
 	// ------------------------------------------------------------
@@ -417,7 +426,6 @@ func main() {
 	mouseStartX, mouseStartY := 0, 0
 	lastMotionX, lastMotionY := 0, 0
 	keyWasDown := map[int]bool{}
-	cycleKeyWasDown := false
 	lastTitle := time.Now()
 	framesReceived := 0
 
@@ -465,23 +473,6 @@ func main() {
 			}
 		}
 		fillKeyWasDown = fillKeyDown
-		cycleKeyDown := window.KeyDown('C')
-		if cycleKeyDown && !cycleKeyWasDown && len(devices) > 1 {
-			for index, device := range devices {
-				if device.Index == deviceIndex {
-					next := devices[(index+1)%len(devices)]
-					newFormats, formatErr := capture.Formats(next.Index)
-					if formatErr == nil && len(newFormats) > 0 {
-						deviceIndex = next.Index
-						formatIndex = newFormats[0].Index
-						selectedFormat = newFormats[0]
-						switches <- captureSwitch{deviceIndex, formatIndex}
-					}
-					break
-				}
-			}
-		}
-		cycleKeyWasDown = cycleKeyDown
 		for _, key := range []struct {
 			vk      int
 			android string
