@@ -82,7 +82,14 @@ func readFrames(capture *native.Capture, deviceIndex, formatIndex uint32, buffer
 				}
 				if readErrors >= 40 {
 					capture.Close()
-					if reopenErr := capture.Open(deviceIndex, formatIndex); reopenErr != nil {
+					reopenDevice, reopenFormat := deviceIndex, formatIndex
+					if devices, enumerateErr := capture.Devices(); enumerateErr == nil && len(devices) > 0 {
+						reopenDevice = devices[0].Index
+						if formats, formatErr := capture.Formats(reopenDevice); formatErr == nil && len(formats) > 0 {
+							reopenFormat = formats[0].Index
+						}
+					}
+					if reopenErr := capture.Open(reopenDevice, reopenFormat); reopenErr != nil {
 						log.Printf("capture reopen failed: %v", reopenErr)
 					} else {
 						log.Println("capture stream reopened")
