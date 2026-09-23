@@ -29,6 +29,12 @@ Build the Go executable:
 go build -o build\viewfinder-go.exe .
 ```
 
+Create a standalone release folder after building native and Go artifacts:
+
+```powershell
+.\scripts\package-release.ps1
+```
+
 Keep `viewfinder_native.dll`, `fullscreen_vs.cso`, and `nv12_ps.cso` beside the executable in `build\`.
 
 ## Run
