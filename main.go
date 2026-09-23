@@ -48,10 +48,11 @@ func mapClientToVideo(x, y int32, clientWidth, clientHeight, videoWidth, videoHe
 	return int((float64(x) - offsetX) * float64(videoWidth) / viewportWidth), int((float64(y) - offsetY) * float64(videoHeight) / viewportHeight), true
 }
 
-func readFrames(capture *native.Capture, buffers chan []byte, frames chan captureFrame, done <-chan struct{}, stopped chan<- struct{}) {
+func readFrames(capture *native.Capture, deviceIndex, formatIndex uint32, buffers chan []byte, frames chan captureFrame, done <-chan struct{}, stopped chan<- struct{}) {
 	defer close(stopped)
 	defer capture.Close()
 	lastReadError := time.Time{}
+	readErrors := 0
 	returnBuffer := func(buffer []byte) bool {
 		select {
 		case buffers <- buffer:
@@ -71,12 +72,22 @@ func readFrames(capture *native.Capture, buffers chan []byte, frames chan captur
 			}
 			data, width, height, stride, err := capture.ReadFrame(buffer)
 			if err != nil {
+				readErrors++
 				if lastReadError.IsZero() || time.Since(lastReadError) >= time.Second {
 					log.Printf("ReadFrame failed: %v", err)
 					lastReadError = time.Now()
 				}
 				if !returnBuffer(buffer) {
 					return
+				}
+				if readErrors >= 40 {
+					capture.Close()
+					if reopenErr := capture.Open(deviceIndex, formatIndex); reopenErr != nil {
+						log.Printf("capture reopen failed: %v", reopenErr)
+					} else {
+						log.Println("capture stream reopened")
+						readErrors = 0
+					}
 				}
 				select {
 				case <-done:
@@ -86,6 +97,7 @@ func readFrames(capture *native.Capture, buffers chan []byte, frames chan captur
 				continue
 			}
 			lastReadError = time.Time{}
+			readErrors = 0
 
 			if data == 0 {
 				if !returnBuffer(buffer) {
@@ -353,7 +365,7 @@ func main() {
 	stopped := make(chan struct{})
 	buffers <- bufferA
 	buffers <- bufferB
-	go readFrames(capture, buffers, frames, done, stopped)
+	go readFrames(capture, deviceIndex, formatIndex, buffers, frames, done, stopped)
 
 	renderWidth := uint32(1280)
 	renderHeight := uint32(720)
